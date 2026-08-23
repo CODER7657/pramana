@@ -120,6 +120,14 @@ first real API key.
    `utf-8/errors=replace`, plus transliteration of the punctuation models
    actually emit.
 
+   *Footnote, added while writing this file:* the script verifying this
+   document was ASCII-clean crashed with `UnicodeEncodeError` on the rupee
+   sign it contains. Same bug class, three sections later, in the tooling
+   checking for it. The distinction that resolves it is worth stating: **CLI
+   output must be ASCII** because a cp1252 console will kill the process;
+   **markdown may be UTF-8** because a browser renders it. `console.py`
+   enforces the first. This file is the second.
+
 ### Found by the fresh-clone test (2)
 
 Cloning the repo into a clean directory and following the README exactly. Both
