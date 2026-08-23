@@ -339,6 +339,13 @@ therefore published here. See [SECURITY.md](SECURITY.md).
 confirmed, it is considered intended, and no upstream fix is coming. An integrator who
 reads an empty violation list as compliance will keep authorising uncapped payments.
 
+Following the vendor's suggestion, both findings are now public upstream:
+
+| | |
+| --- | --- |
+| Issue | [google-agentic-commerce/AP2#339](https://github.com/google-agentic-commerce/AP2/issues/339) |
+| Pull request | [google-agentic-commerce/AP2#340](https://github.com/google-agentic-commerce/AP2/pull/340) — documents the `budget.max` unit |
+
 1. **Presence-driven constraint evaluation** — a withheld constraint is indistinguishable
    from a satisfied one. ([ADR-0003](docs/adr/0003-absent-constraint-is-not-consent.md))
 2. **Undocumented unit mismatch between `Budget.max` and `AmountRange.max`** — an issuer
