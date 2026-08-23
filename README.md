@@ -115,7 +115,7 @@ in a dispute can recompute the hash from the same facts in a different language.
 
 ## Status
 
-Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 220 tests, all green.
+Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 366 tests, all green.
 
 | Component | State |
 | --- | --- |
@@ -126,11 +126,13 @@ Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 220 test
 | Verdict explainer + prompt-injection boundary | **Built**, 44 tests |
 | Evidence ledger (C5) - hash-chained, tamper-evident | **Built**, 31 tests |
 | Dispute-pack drafter | **Built**, 32 tests |
+| Advisory risk signals - Vulcan integration contract | **Built**, 69 tests |
+| Exception triage | **Built**, 35 tests |
+| Buying agent (the governed party) | **Built**, 42 tests |
 | Policy engine + predicate framework | Not started |
 | RBI envelope predicates | Not started |
 | FastAPI gate | Not started |
 | Attack benchmark (RC-1..RC-5) | Not started |
-| AI layer — exception triage, buying agent | Not started |
 
 Nothing above is claimed as working that is not. Where a number appears in this README, it
 was measured; where a design is described but unbuilt, it says so.
@@ -167,6 +169,44 @@ entirely, so a rehearsed demo runs with the cable pulled.
 
 Authorisation **fails closed**; explanation **fails open**. Neither trades away the
 other's property.
+
+---
+
+## Where this sits next to Razorpay Vulcan
+
+Razorpay launched **Vulcan** on 18 August 2026 — a payments foundation model trained on
+~3 trillion data points across 4 billion payments, ~3,000 signals per transaction.
+PRAMANA does not compete with it and makes no claim to do fraud detection.
+
+They answer different questions:
+
+| | Vulcan-class scorer | PRAMANA |
+| --- | --- | --- |
+| Question | *"Is this transaction likely fraudulent?"* | *"Was this agent permitted to make it?"* |
+| Method | Probabilistic, learned from history | Deterministic, cryptographic |
+| Improves with | More data, better architecture | Nothing — it is already exact |
+| Correct to be a model | **Yes** | **No** |
+
+The withheld-constraint case is exactly where the gap opens. A compromised agent
+presenting a chain with the cap withheld produces a transaction that is statistically
+unremarkable: known agent, valid chain, amount inside its own historical range, familiar
+merchant. There is no anomaly to detect. Semantic attacks weaken as models improve;
+structural ones do not.
+
+So PRAMANA integrates rather than competes, under one invariant:
+
+> **An advisory risk signal can subtract authority. It can never add any.**
+
+A `HIGH` band can block. `LOW` emits `NOT_APPLICABLE` — never `SATISFIED`. An
+unreachable scorer emits `NOT_APPLICABLE` and does not block. A scorer that is
+compromised, mis-thresholded, or attacker-controlled into returning "low risk" for
+everything therefore cannot authorise anything; the deterministic obligations still have
+to pass on their own. A scorer that *throws* cannot deny service either — a fraud model
+must not become an outage on checkout.
+
+`to_obligation` has exactly two reachable statuses and `SATISFIED` is not one of them.
+[ADR-0005](docs/adr/0005-advisory-risk-signals.md) records the analysis; the property is
+swept exhaustively in [`tests/unit/test_risk_signals.py`](tests/unit/test_risk_signals.py).
 
 ---
 
