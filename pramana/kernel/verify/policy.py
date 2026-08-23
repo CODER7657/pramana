@@ -24,13 +24,23 @@ from __future__ import annotations
 
 import importlib.resources
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Final
 
 import yaml
 
 from pramana.kernel.verdict import Citation, ObligationSource
+
+HANDOFF_KEY: Final = "defers_to"
+"""Param under which an obligation declares that another one holds a case."""
+
+RESOLVED_HANDOFF_KEY: Final = "deferred_categories"
+"""Where :class:`Policy` writes the resolved handoff for the predicate to read.
+
+Never written by hand. A policy file that sets it is refused, because a
+hand-written copy is exactly the drift the resolution exists to prevent.
+"""
 
 
 class PolicyError(Exception):
@@ -96,6 +106,97 @@ class Policy:
                 f"policy {self.version!r} enables no obligations; it could only "
                 "ever produce an unchecked ALLOW"
             )
+        object.__setattr__(self, "obligations", self._resolve_handoffs())
+
+    def _resolve_handoffs(self) -> tuple[ObligationSpec, ...]:
+        """Bind every declared handoff to its receiver, or refuse to load.
+
+        One obligation may step aside for another: ``rbi.afa_threshold`` hands
+        the enhanced-ceiling categories to ``rbi.category_ceiling`` rather than
+        applying the standard ceiling to them. That is a *transfer of
+        responsibility*, and it has the failure mode every transfer has --
+        nobody receives it.
+
+        No verdict-level invariant can catch that. Both obligations report a
+        result, so coverage is satisfied; both results are ``NOT_APPLICABLE``,
+        so nothing blocks; and each predicate is individually correct, because
+        each was told the other one had it. The rule simply goes unenforced.
+        It is the same defect as an obligation with no result, one layer up:
+        **a handoff with no receiver is absence wearing a delegation.**
+
+        So it is caught here, at load, where it is still visible -- and the
+        receiving list is *read from the receiver* rather than copied, so the
+        two cannot drift apart in the first place. A policy is loaded once at
+        startup, so refusing to load is the cheapest possible failure.
+        """
+        resolved: list[ObligationSpec] = []
+        for spec in self.obligations:
+            raw = spec.param(HANDOFF_KEY)
+            if raw is None:
+                if RESOLVED_HANDOFF_KEY in spec.params:
+                    raise PolicyError(
+                        f"obligation {spec.id!r} sets {RESOLVED_HANDOFF_KEY!r} "
+                        f"but declares no {HANDOFF_KEY!r}. That key is derived "
+                        f"from the receiving obligation and is overwritten on "
+                        f"every load, so a hand-written value does nothing at "
+                        f"all -- which is worse than being wrong."
+                    )
+                resolved.append(spec)
+                continue
+            if not spec.enabled:
+                # A disabled obligation defers nothing; it is not evaluated.
+                resolved.append(spec)
+                continue
+            # Always overwritten, never merged: the receiver is the only source
+            # of this list, so no copy of it can survive to drift.
+            resolved.append(
+                replace(spec, params={
+                    **spec.params,
+                    RESOLVED_HANDOFF_KEY: self._receive(spec, raw),
+                })
+            )
+        return tuple(resolved)
+
+    def _receive(self, spec: ObligationSpec, raw: Any) -> tuple[str, ...]:
+        """Validate one handoff and return the receiver's list of cases."""
+        if not isinstance(raw, dict):
+            raise PolicyError(
+                f"obligation {spec.id!r}: {HANDOFF_KEY!r} must be a mapping"
+            )
+        unknown = set(raw) - {"obligation", "when_category_in"}
+        if unknown:
+            raise PolicyError(
+                f"obligation {spec.id!r}: unknown {HANDOFF_KEY!r} keys "
+                f"{sorted(unknown)}"
+            )
+        receiver_id = str(raw.get("obligation", "")).strip()
+        param_name = str(raw.get("when_category_in", "")).strip()
+        if not receiver_id or not param_name:
+            raise PolicyError(
+                f"obligation {spec.id!r}: {HANDOFF_KEY!r} requires both "
+                f"'obligation' and 'when_category_in'"
+            )
+
+        receiver = self.spec(receiver_id)
+        if receiver is None:
+            raise PolicyError(
+                f"obligation {spec.id!r} defers to {receiver_id!r}, which this "
+                f"policy does not declare. A handoff with no receiver leaves the "
+                f"rule unenforced by both."
+            )
+        if not receiver.enabled:
+            raise PolicyError(
+                f"obligation {spec.id!r} defers to {receiver_id!r}, which is "
+                f"disabled. Disabling the receiver does not disable the rule -- "
+                f"it silently drops it. Remove the handoff too, deliberately."
+            )
+        cases = receiver.param(param_name)
+        if not isinstance(cases, list) or not cases:
+            raise PolicyError(
+                f"obligation {spec.id!r} defers to {receiver_id!r}.{param_name}, "
+                f"which is not a non-empty list. There is nothing to receive."
+            )
+        return tuple(str(c) for c in cases)
 
     @property
     def enabled(self) -> tuple[ObligationSpec, ...]:

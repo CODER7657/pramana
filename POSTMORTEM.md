@@ -52,19 +52,19 @@ downstream, a provider outage costs an explanation, not a payment.
 
 | | |
 | --- | --- |
-| Tests | 559 |
+| Tests | 604 |
 | Statement coverage | **95%** |
 | `pramana/kernel/gate.py` | 100% |
 | `pramana/kernel/verdict.py` | 99% |
 | `pramana/kernel/risk/signals.py` | 99% |
-| Lowest module | `kernel/trace.py`, 84% |
+| Lowest module | `pramana/config.py`, 50% — then `kernel/trace.py`, 84% |
 
 ### Benchmark
 
 | | baseline | PRAMANA |
 | --- | --- | --- |
-| Attack-success rate (structural) | 58.3% (7/12) | **0.0%** (0/12) |
-| False-positive rate | 0.0% (0/6) | **0.0%** (0/6) |
+| Attack-success rate (structural) | 53.8% (7/13) | **0.0%** (0/13) |
+| False-positive rate | 0.0% (0/8) | **0.0%** (0/8) |
 
 Read the caveat in `pramana bench` output before quoting the 0%. We wrote the
 cases and we wrote the gate.
@@ -73,7 +73,7 @@ cases and we wrote the gate.
 
 ## What broke
 
-Twenty-two defects, grouped by how they were found. The pattern worth noting: **not
+Twenty-seven defects, grouped by how they were found. The pattern worth noting: **not
 one of these came from writing more code. Every one came from running something
 against reality.**
 
@@ -186,6 +186,50 @@ alongside it. A green test asserted the opposite of the truth. The benchmark
 now carries the ₹50,000 insurance premium as a case, and that case failed when
 it was written.
 
+### Found by a third external review (5)
+
+The third pass verified every fix from the second and then broke the fix itself.
+
+**The carve-out fix opened a fail-open.** Closing the ₹1,00,000 ceiling defect
+left `rbi.afa_threshold` deferring the enhanced categories to
+`rbi.category_ceiling` — and both obligations carried **their own copy of the
+category list**. Deleting one word from one copy:
+
+```
+INR 50,00,000 insurance premium, no AFA, everything else clean
+  policy as shipped                         -> 403  blocking=['rbi.category_ceiling']
+  one word dropped from enhanced_categories -> 200  blocking=[]   coverage=1.0
+```
+
+An unauthenticated debit of fifty times the enhanced ceiling, authorised, with
+coverage reporting 1.0. **No verdict-level invariant could see it.** Both
+obligations reported a result, so coverage was satisfied. Both said
+`NOT_APPLICABLE`, so nothing blocked. Each predicate was individually correct,
+because each had been told the other one held the case.
+
+That is the same family as the empty obligation set and the all-`NOT_APPLICABLE`
+verdict, appearing a third time one layer up: *responsibility transferred, and
+nobody receiving it.* A handoff with no receiver is absence wearing a
+delegation. The fix is therefore an invariant rather than a patch —
+`Policy._resolve_handoffs` reads the list **from the receiver** so no second copy
+exists to drift, and refuses to load a policy whose handoff receiver is absent,
+disabled, or empty. Disabling the receiver used to silently drop the rule; it is
+now a load error that says so.
+
+The other four, all claims-outrunning-code:
+
+| | Defect |
+| --- | --- |
+| Benchmark | The README's "The number" block was **five numbers stale** — 58.3% (7/12) and 0/6 legitimate, three commits after the suite grew to 13 and 8. The test count was guarded by a test; the expensive number was not. Now every rate line and per-class row is compared against a live run. |
+| Evidence | An obligation id the policy **never declared** was accepted from the wire and written to the ledger. It could not authorise anything, but in an evidence record it reads exactly like a check somebody required and somebody performed. The caller reports what it evaluated; it does not get to extend the policy. |
+| Benchmark | The latency line said "including the ledger write" while the runner used `MemoryStore`. The only durable backend shipped, `JsonlStore`, costs 22 ms at depth 2000. The output now names the store, and the sample size. |
+| README | The component table claimed the benchmark covered **RC-1..RC-6**. There are no RC-6 cases. RC-6 is semantic — it belongs to the model, not the gate — and is now listed as out of scope, which is the true statement and the better one. |
+
+One review claim did **not** reproduce: coverage was reported as 96% against a
+95% badge. Measured at `--precision=1` it is **95.1%**, so the badge was right
+and the correction was wrong. Verifying before acting has now caught two of
+these across three reviews, which is the entire reason for the habit.
+
 ### Found by our own tests, in our own tests (3)
 
 Recorded because it would be dishonest to list only the code defects.
@@ -246,12 +290,17 @@ Ordered by what we would do first, not by how impressive it sounds.
    facts is the one piece the benchmark simulates rather than exercises.
 
 4. **A legitimate-traffic corpus we did not author.** The false-positive rate is
-   0/6 against six boundary cases we wrote. Six is not a corpus, and we wrote
+   0/8 against eight boundary cases we wrote. Eight is not a corpus, and we wrote
    them. Real traffic, or AIP-Bench's cases when they release on 2026-10-04,
    would make the number mean something.
 
-5. **`kernel/trace.py` to 95%.** Lowest-covered module at 84%. The gaps are the
-   `secrets` collision retry loops, which are hard to exercise honestly.
+5. **`pramana/config.py` and `kernel/trace.py`.** The two lowest-covered modules,
+   at 50% and 84%. `config.py`'s gap is the `.env` parse loop, which is trivial to
+   cover and simply was not; `trace.py`'s is the `secrets` collision retry loops,
+   which are hard to exercise honestly. Neither is on the decision path — `gate.py`
+   is at 100% and `verdict.py` at 99% — but "lowest module" naming `trace.py` was
+   wrong once `config.py` landed, which is exactly the drift this file exists to
+   record.
 
 6. **Catalogue integrity (RC-1).** Currently caught only through merchant policy.
    A real content-integrity scanner is unbuilt and the benchmark says so.
@@ -297,10 +346,11 @@ of the build either.
   and offline mode are all genuinely exercised. It is also why the three live
   bugs were invisible; both halves of that trade-off are real.
 
-- **The AI boundary.** Sixteen injection payloads through a model scripted to
-  return exactly what the attacker asked for. The verdict's decision and content
-  hash are byte-identical every time, because nothing in the codebase converts a
-  string into an `ObligationStatus`.
+- **The AI boundary.** Eight injection payloads through both attacker-reachable
+  fields — sixteen cases — against a model scripted to return exactly what the
+  attacker asked for. The verdict's decision and content hash are byte-identical
+  every time, because nothing in the codebase converts a string into an
+  `ObligationStatus`.
 
 - **Deciding the honest framing before knowing the outcome.** The benchmark
   prints "we wrote these cases and we wrote the gate" unconditionally, with a

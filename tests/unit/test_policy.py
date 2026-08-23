@@ -16,6 +16,7 @@ import pytest
 
 from pramana.kernel.verdict import ObligationSource, ObligationStatus
 from pramana.kernel.verify.policy import (
+    RESOLVED_HANDOFF_KEY,
     ObligationSpec,
     Policy,
     PolicyError,
@@ -414,3 +415,177 @@ class TestPolicySerialisation:
     def test_policy_requires_a_version(self) -> None:
         with pytest.raises(PolicyError, match="version is required"):
             Policy(version="", description="", obligations=())
+
+
+# ---------------------------------------------------------------------------
+# INVARIANT: a handoff must have a receiver
+#
+# rbi.afa_threshold steps aside for rbi.category_ceiling on the enhanced-ceiling
+# categories. When both ends carried their own copy of that category list,
+# deleting one word from one copy authorised an unauthenticated INR 50,00,000
+# debit -- and no verdict-level invariant could see it, because both predicates
+# reported a result, both said NOT_APPLICABLE, and both were individually right.
+# ---------------------------------------------------------------------------
+
+HANDOFF = """
+version: "t@1"
+obligations:
+  - id: rbi.afa_threshold
+    source: regulatory
+    description: d
+    params:
+      ceiling_paise: 1500000
+      defers_to:
+        obligation: rbi.category_ceiling
+        when_category_in: enhanced_categories
+    citation:
+      authority: RBI
+      reference: r
+  - id: rbi.category_ceiling
+    source: regulatory
+    description: d
+    params:
+      enhanced_ceiling_paise: 10000000
+      enhanced_categories:
+        - insurance
+        - mutual_fund
+    citation:
+      authority: RBI
+      reference: r
+"""
+
+FIFTY_LAKH = 500_000_00
+"""Fifty times the enhanced ceiling. Nothing may authorise this without AFA."""
+
+
+def without(text: str, stripped_line: str) -> str:
+    """Drop the first line whose stripped form matches. YAML surgery, readably."""
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.strip() == stripped_line:
+            del lines[i]
+            return "".join(lines)
+    raise AssertionError(f"no line {stripped_line!r} to drop")
+
+
+def disable(text: str, obligation_id: str) -> str:
+    """Set ``enabled: false`` on one obligation, at the correct indent."""
+    lines = text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.strip() == f"- id: {obligation_id}":
+            indent = " " * (line.index("- id:") + 2)
+            lines.insert(i + 1, f"{indent}enabled: false\n")
+            return "".join(lines)
+    raise AssertionError(f"no obligation {obligation_id!r} to disable")
+
+
+class TestHandoffsHaveAReceiver:
+    def test_the_defer_list_is_read_from_the_receiver_not_copied(self) -> None:
+        policy = builtin_policy()
+        deferring = policy.spec("rbi.afa_threshold")
+        receiver = policy.spec("rbi.category_ceiling")
+        assert deferring is not None and receiver is not None
+        assert deferring.param(RESOLVED_HANDOFF_KEY) == tuple(
+            receiver.param("enhanced_categories")
+        )
+
+    def test_the_shipped_policy_still_applies_the_enhanced_ceiling(self) -> None:
+        """The carve-out this handoff exists for must keep working."""
+        obs = {
+            o.id: o
+            for o in evaluate(
+                builtin_policy().by_source(ObligationSource.REGULATORY),
+                compliant(amount_paise=5_000_000, category="insurance"),
+            )
+        }
+        assert obs["rbi.afa_threshold"].status is ObligationStatus.NOT_APPLICABLE
+        assert obs["rbi.category_ceiling"].status is ObligationStatus.SATISFIED
+
+    def test_narrowing_the_receiver_hands_the_category_back(self) -> None:
+        """The fail-open, now unreachable: there is only one list to narrow."""
+        narrowed = load_policy(without(HANDOFF, "- insurance"))
+        obs = {
+            o.id: o
+            for o in evaluate(
+                narrowed.enabled,
+                compliant(amount_paise=FIFTY_LAKH, category="insurance"),
+            )
+        }
+        # Both of these said NOT_APPLICABLE when the list was duplicated, and
+        # an unauthenticated INR 50,00,000 debit was ALLOWED with coverage 1.0.
+        assert obs["rbi.afa_threshold"].status is ObligationStatus.VIOLATED
+        assert obs["rbi.category_ceiling"].status is ObligationStatus.NOT_APPLICABLE
+
+    def test_a_disabled_receiver_is_refused_at_load(self) -> None:
+        with pytest.raises(PolicyError, match="disabled"):
+            load_policy(disable(HANDOFF, "rbi.category_ceiling"))
+
+    def test_an_absent_receiver_is_refused_at_load(self) -> None:
+        with pytest.raises(PolicyError, match="does not declare"):
+            load_policy(
+                HANDOFF.replace("  - id: rbi.category_ceiling", "  - id: rbi.other", 1)
+            )
+
+    def test_an_empty_receiver_list_is_refused_at_load(self) -> None:
+        emptied = without(
+            without(
+                without(HANDOFF, "- insurance"), "- mutual_fund"
+            ),
+            "enhanced_categories:",
+        )
+        with pytest.raises(PolicyError, match="nothing to receive"):
+            load_policy(emptied)
+
+    def test_a_handwritten_resolved_list_does_nothing_and_is_refused(self) -> None:
+        """Copying the list back in by hand is the defect, so it cannot load."""
+        handwritten = HANDOFF.replace(
+            "      defers_to:\n"
+            "        obligation: rbi.category_ceiling\n"
+            "        when_category_in: enhanced_categories\n",
+            "      deferred_categories:\n        - insurance\n",
+            1,
+        )
+        with pytest.raises(PolicyError, match="does nothing at all"):
+            load_policy(handwritten)
+
+    @pytest.mark.parametrize(
+        ("replacement", "expected"),
+        [
+            ("      defers_to: not-a-mapping\n", "must be a mapping"),
+            (
+                "      defers_to:\n        obligation: rbi.category_ceiling\n",
+                "requires both",
+            ),
+            (
+                "      defers_to:\n"
+                "        obligation: rbi.category_ceiling\n"
+                "        when_category_in: enhanced_categories\n"
+                "        typo: x\n",
+                "unknown 'defers_to' keys",
+            ),
+        ],
+    )
+    def test_a_malformed_handoff_is_refused(
+        self, replacement: str, expected: str
+    ) -> None:
+        broken = HANDOFF.replace(
+            "      defers_to:\n"
+            "        obligation: rbi.category_ceiling\n"
+            "        when_category_in: enhanced_categories\n",
+            replacement,
+            1,
+        )
+        with pytest.raises(PolicyError, match=expected):
+            load_policy(broken)
+
+    def test_resolution_is_idempotent(self) -> None:
+        """bench/runner.py rebuilds a Policy from already-resolved specs."""
+        once = load_policy(HANDOFF)
+        twice = Policy(
+            version=once.version,
+            description=once.description,
+            obligations=once.obligations,
+        )
+        assert [dict(o.params) for o in twice.obligations] == [
+            dict(o.params) for o in once.obligations
+        ]

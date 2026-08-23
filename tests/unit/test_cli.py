@@ -299,3 +299,36 @@ class TestReadmeNumbersAreTrue:
     def test_the_readme_states_one_count_not_three(self) -> None:
         counts = set(re.findall(r"(\d{3,4}) tests", self._readme()))
         assert len(counts) <= 1, f"README states several different counts: {counts}"
+
+    def test_the_quoted_benchmark_numbers_match_a_live_run(self) -> None:
+        """The test count was guarded and the expensive number was not.
+
+        The README quoted 58.3% (7/12) and 0/6 legitimate for three commits
+        after the suite had grown to 13 attacks and 8 legitimate cases -- in
+        the section headed "The number", in a repo whose own test suite
+        asserts that README numbers are true. Every rate line and every
+        per-class row in that block is now compared against a live run.
+
+        Latency is deliberately excluded: it is a timing, so it cannot be
+        asserted, and the README says next to it why it should not be quoted.
+        """
+        from bench.runner import run as run_benchmark  # noqa: PLC0415
+
+        quotable = re.compile(
+            r"attacks allowed\)"          # the two ASR lines
+            r"|^\s+(baseline|PRAMANA)\s+:"  # the two FPR lines
+            r"|^\s+RC-\d\s+\d+/\d+"       # the per-class table rows
+        )
+        rendered = [
+            line.rstrip()
+            for line in run_benchmark().render().splitlines()
+            if quotable.search(line)
+        ]
+        assert rendered, "the benchmark rendered no rate lines"
+
+        readme = {line.rstrip() for line in self._readme().splitlines()}
+        stale = [line for line in rendered if line not in readme]
+        assert not stale, (
+            "README's benchmark block no longer matches `pramana bench`:\n  "
+            + "\n  ".join(stale)
+        )

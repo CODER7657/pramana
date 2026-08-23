@@ -385,7 +385,10 @@ class TestNeverRaises(TestFailClosed):
     """
 
     def test_duplicate_obligation_ids_reject_rather_than_raise(self) -> None:
-        dup = ob("same.id")
+        # A *declared* id, so the duplicate reaches build_verdict rather than
+        # being dropped as undeclared first. The realistic case anyway: a
+        # caller that reports the same check twice.
+        dup = ob("chain.verified")
         result = kernel().evaluate(request(protocol_results=(dup, dup)))
         assert result.verdict.decision is Decision.REJECT
         assert "internal.request_wellformed" in {
@@ -438,6 +441,66 @@ class TestLedgeredVerdictIsTheReturnedVerdict:
         assert result.verdict.decision is Decision.REJECT
         assert LEDGER_OBLIGATION_ID in {o.id for o in result.verdict.blocking}
         assert result.record is None
+
+
+class TestTheCallerCannotExtendThePolicy:
+    """An id the policy never declared was accepted and written to the ledger.
+
+    It could not authorise anything -- the affirmation invariant counts only
+    declared ids -- but in the evidence record it reads exactly like a check
+    somebody required and somebody performed.
+    """
+
+    def test_an_undeclared_obligation_rejects(self) -> None:
+        result = kernel().evaluate(
+            request(
+                protocol_results=(
+                    ob("chain.verified"),
+                    ob("chain.nonce_fresh"),
+                    ob("chain.disclosures_pinned"),
+                    ob("zzz.undeclared"),
+                )
+            )
+        )
+        assert result.verdict.decision is Decision.REJECT
+        blocking = {o.id for o in result.verdict.blocking}
+        assert "internal.undeclared_obligation" in blocking
+
+    def test_the_undeclared_id_never_reaches_the_evidence_record(self) -> None:
+        result = kernel().evaluate(
+            request(
+                merchant_results=(
+                    ob("zzz.undeclared", source=ObligationSource.MERCHANT),
+                )
+            )
+        )
+        assert result.record is not None
+        recorded = {o["id"] for o in result.record.verdict["obligations"]}
+        assert "zzz.undeclared" not in recorded
+
+    def test_the_detail_names_every_undeclared_id(self) -> None:
+        result = kernel().evaluate(
+            request(
+                mandate_results=(
+                    ob("aaa.one", source=ObligationSource.MANDATE),
+                    ob("bbb.two", source=ObligationSource.MANDATE),
+                )
+            )
+        )
+        offender = next(
+            o
+            for o in result.verdict.obligations
+            if o.id == "internal.undeclared_obligation"
+        )
+        assert "aaa.one" in offender.detail
+        assert "bbb.two" in offender.detail
+
+    def test_a_fully_declared_request_is_unaffected(self) -> None:
+        result = kernel().evaluate(request())
+        assert result.verdict.decision is Decision.ALLOW
+        assert "internal.undeclared_obligation" not in {
+            o.id for o in result.verdict.obligations
+        }
 
 
 class TestSynthesisAttribution:

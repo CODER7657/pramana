@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from typing import Any, Final
 
 from pramana.kernel.verdict import Obligation, ObligationStatus
-from pramana.kernel.verify.policy import ObligationSpec
+from pramana.kernel.verify.policy import RESOLVED_HANDOFF_KEY, ObligationSpec
 
 SECONDS_PER_HOUR: Final = 3600
 
@@ -112,7 +112,9 @@ def afa_threshold(spec: ObligationSpec, facts: PaymentFacts) -> Obligation:
     :func:`category_ceiling`; this predicate applies the standard one.
     """
     ceiling = int(spec.require("ceiling_paise"))
-    deferred = {str(c) for c in spec.param("defers_to_category_ceiling", [])}
+    # Resolved by Policy from the receiving obligation, never copied into this
+    # policy file: see Policy._resolve_handoffs.
+    deferred = {str(c) for c in spec.param(RESOLVED_HANDOFF_KEY, ())}
 
     if facts.category is not None and facts.category in deferred:
         # The enhanced ceiling for this category is applied by

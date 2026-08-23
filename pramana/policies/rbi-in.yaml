@@ -90,10 +90,14 @@ obligations:
       # every transaction and the INR 1,00,000 carve-out was unreachable:
       # a blocking obligation rejects, so category_ceiling returning SATISFIED
       # could never rescue an afa_threshold VIOLATED.
-      defers_to_category_ceiling:
-        - insurance
-        - mutual_fund
-        - credit_card_bill
+      #
+      # The categories are NOT repeated here. They are read from the receiving
+      # obligation at load time, because when they were duplicated, deleting
+      # one word from the other copy left both predicates correctly saying
+      # "not mine" and authorised an unauthenticated INR 50,00,000 debit.
+      defers_to:
+        obligation: rbi.category_ceiling
+        when_category_in: enhanced_categories
     citation:
       authority: RBI
       reference: "Digital Payments - E-mandate Framework, 2026"

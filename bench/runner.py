@@ -258,7 +258,12 @@ class BenchReport:
         add("")
         lines.extend(self._render_class_table())
         add("")
-        add("  LATENCY (whole decision, including the ledger write)")
+        # Naming the store is not pedantry: JsonlStore, the only durable
+        # backend shipped and the one default_app() wires up, reads the whole
+        # file on every append -- 22ms at depth 2000. "Including the ledger
+        # write" without the qualifier claims a number no deployment sees.
+        add("  LATENCY (whole decision, including an in-memory ledger write)")
+        add(f"    over {len(self.outcomes)} cases -- too few for a real p99")
         add(f"    p50 {self.latency_p(0.50):.2f}ms   "
             f"p95 {self.latency_p(0.95):.2f}ms   "
             f"p99 {self.latency_p(0.99):.2f}ms")

@@ -125,16 +125,17 @@ class Kernel:
         recorder = SpanRecorder(self._clock)
         started = recorder.now()
 
-        obligations: list[Obligation] = []
-        obligations.extend(
+        supplied: list[Obligation] = []
+        supplied.extend(
             self._span(recorder, root, "protocol", lambda: request.protocol_results)
         )
-        obligations.extend(
+        supplied.extend(
             self._span(recorder, root, "mandate", lambda: request.mandate_results)
         )
-        obligations.extend(
+        supplied.extend(
             self._span(recorder, root, "merchant", lambda: request.merchant_results)
         )
+        obligations: list[Obligation] = list(self._only_declared(supplied))
         obligations.extend(
             self._span(
                 recorder,
@@ -191,6 +192,53 @@ class Kernel:
         )
 
     # -- steps -------------------------------------------------------------
+
+    def _only_declared(
+        self, supplied: Sequence[Obligation]
+    ) -> tuple[Obligation, ...]:
+        """Caller-supplied results may only name obligations the policy declared.
+
+        The caller reports what it evaluated; it does not get to extend the
+        policy. An undeclared id cannot authorise anything on its own -- the
+        affirmation invariant counts only declared ids -- but it *was* being
+        written into the evidence ledger, where it reads exactly like a check
+        somebody required and somebody performed. An evidence record that
+        contains checks nobody asked for is not evidence of anything.
+
+        So an undeclared id is dropped and the request rejects, rather than the
+        id being silently ignored. Ignoring it would leave the caller believing
+        a check it reported was taken into account.
+
+        ``internal.*`` ids are exempt: those are ours, minted by :meth:`_span`
+        when a predicate group crashes, and they are never caller input.
+        """
+        declared = self.policy.declared_ids
+        undeclared = sorted(
+            {
+                o.id
+                for o in supplied
+                if o.id not in declared and not o.id.startswith("internal.")
+            }
+        )
+        kept = tuple(o for o in supplied if o.id not in undeclared)
+        if not undeclared:
+            return kept
+        logger.warning("caller reported undeclared obligations: %s", undeclared)
+        return (
+            *kept,
+            Obligation(
+                id="internal.undeclared_obligation",
+                status=ObligationStatus.VIOLATED,
+                source=ObligationSource.MERCHANT,
+                detail=(
+                    f"The caller reported {len(undeclared)} obligation(s) this "
+                    f"policy does not declare: {', '.join(undeclared)}. A caller "
+                    f"reports what it evaluated; it does not get to extend the "
+                    f"policy, and evidence may not record checks nobody required."
+                ),
+                expected="only policy-declared obligation ids",
+            ),
+        )
 
     def _declared_meta(
         self,
