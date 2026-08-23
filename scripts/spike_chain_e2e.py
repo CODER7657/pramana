@@ -19,8 +19,6 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-from jwcrypto.jwk import JWK
-
 from ap2.sdk.constraints import MandateContext, create_payment_evaluator
 from ap2.sdk.disclosure_metadata import DisclosureMetadata
 from ap2.sdk.generated.open_payment_mandate import (
@@ -33,6 +31,7 @@ from ap2.sdk.generated.types.amount import Amount
 from ap2.sdk.generated.types.merchant import Merchant
 from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
 from ap2.sdk.mandate import MandateClient
+from jwcrypto.jwk import JWK
 
 BUDGET_CAP = 5_000.0          # major units (INR)
 ATTEMPTED = 750_000           # minor units (paise) = INR 7,500 -- over the cap
@@ -58,7 +57,7 @@ def constraints_of(payload: Any) -> list[str]:
     return [getattr(c, "type", type(c).__name__) for c in raw]
 
 
-def main() -> int:  # noqa: PLR0915
+def main() -> int:
     client = MandateClient()
     bank, sa = key(), key()
 
@@ -105,7 +104,7 @@ def main() -> int:  # noqa: PLR0915
                 nonce=NONCE,
                 aud=AUD,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"present() failed: {type(exc).__name__}: {exc}")
             results[label] = ("present-failed", None, None)
             continue
@@ -123,7 +122,7 @@ def main() -> int:  # noqa: PLR0915
                 expected_nonce=NONCE,
             )
             chain_ok = True
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"VERIFY FAILED  : {type(exc).__name__}: {exc}")
             results[label] = ("verify-failed", False, None)
             continue
@@ -150,7 +149,7 @@ def main() -> int:  # noqa: PLR0915
                     create_payment_evaluator(c, ctx).evaluate(closed_m)
                 )
             print(f"violations     : {violations or '[]'}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"re-parse failed: {type(exc).__name__}: {exc}")
             violations = ["<reparse-error>"]
 

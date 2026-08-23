@@ -23,9 +23,6 @@ third-party system, and generates no novel attacks.
 from __future__ import annotations
 
 import sys
-from typing import Any
-
-from jwcrypto.jwk import JWK
 
 from ap2.sdk.constraints import MandateContext, create_payment_evaluator
 from ap2.sdk.disclosure_metadata import DisclosureMetadata
@@ -39,6 +36,7 @@ from ap2.sdk.generated.types.amount import Amount
 from ap2.sdk.generated.types.merchant import Merchant
 from ap2.sdk.generated.types.payment_instrument import PaymentInstrument
 from ap2.sdk.mandate import MandateClient
+from jwcrypto.jwk import JWK
 
 BUDGET_CAP = 5_000.0
 CURRENCY = "INR"
@@ -120,7 +118,7 @@ def main() -> int:
     )
     print(f"constraints now             : "
           f"{[type(c).__name__ for c in redacted.constraints]}")
-    print(f"model still schema-valid    : True (parsed without error)")
+    print("model still schema-valid    : True (parsed without error)")
 
     violations = evaluate(redacted, closed_m)
     print(f"violations                  : {violations}")
@@ -138,7 +136,7 @@ def main() -> int:
         print(f"root SD-JWT issued, length {len(token)} chars")
         print(f"disclosure segments in token: {token.count('~')}")
         precondition = True
-    except Exception as exc:  # noqa: BLE001 -- spike: report, do not raise
+    except Exception as exc:
         print(f"DisclosureMetadata rejected: {type(exc).__name__}: {exc}")
         precondition = False
 

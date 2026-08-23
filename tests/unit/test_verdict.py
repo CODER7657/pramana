@@ -1,14 +1,20 @@
 """Invariants of the canonical verdict types.
 
-These tests are deliberately adversarial about the fail-closed properties.
-The upstream failure mode we are defending against is subtle: a system that
-finds "no violations" because it never evaluated anything. Several tests
-below exist purely to make that state unrepresentable.
+Several tests here are regressions for defects found in review on 2026-08-23.
+They are marked with their finding id so they cannot be silently deleted:
+
+* S3a -- an all-NOT_APPLICABLE verdict returned ALLOW
+* S3b -- a frozen Verdict was mutable via the caller's list, flipping its hash
+* S3c -- canonical_bytes() rendered arbitrary objects via repr, memory
+         addresses included, destroying determinism
+* S3d -- mandate_ref defaulted to None and trace_id accepted "x"
+* S4  -- nothing forced the obligation set to cover what policy declared
 """
 
 from __future__ import annotations
 
-import json
+import hashlib
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -19,9 +25,11 @@ from pramana.kernel.verdict import (
     ObligationSource,
     ObligationStatus,
     Verdict,
+    build_verdict,
 )
 
 TRACE = "4bf92f3577b34da6a3ce929d0e0e4736"
+REF = hashlib.sha256(b"closed-mandate-jwt").hexdigest()
 POLICY = "test-policy@1"
 
 
@@ -33,9 +41,15 @@ def _ob(
     return Obligation(id=ident, status=status, source=source, detail="test detail")
 
 
-def _verdict(*obligations: Obligation) -> Verdict:
-    return Verdict(
-        obligations=list(obligations), policy_version=POLICY, trace_id=TRACE
+def _verdict(
+    *obligations: Obligation, declared: tuple[str, ...] | None = None
+) -> Verdict:
+    return build_verdict(
+        obligations,
+        policy_version=POLICY,
+        declared_obligations=declared or tuple(o.id for o in obligations),
+        trace_id=TRACE,
+        mandate_ref=REF,
     )
 
 
@@ -50,7 +64,6 @@ class TestFailClosed:
             _ob(ObligationStatus.SATISFIED, "a"), _ob(ObligationStatus.SATISFIED, "b")
         )
         assert v.decision is Decision.ALLOW
-        assert v.is_allowed
 
     def test_single_violation_rejects(self) -> None:
         v = _verdict(
@@ -59,20 +72,13 @@ class TestFailClosed:
         assert v.decision is Decision.REJECT
 
     def test_indeterminate_rejects_exactly_as_hard_as_violated(self) -> None:
-        """The central claim of ADR-0003.
-
-        An obligation we could not evaluate must block. If this ever passes
-        as ALLOW, a stripped constraint disclosure becomes an accepted payment.
-        """
         v = _verdict(
             _ob(ObligationStatus.SATISFIED, "a"),
             _ob(ObligationStatus.INDETERMINATE, "b"),
         )
         assert v.decision is Decision.REJECT
 
-    def test_not_applicable_does_not_block(self) -> None:
-        """NOT_APPLICABLE is a genuine 'this rule does not govern this case',
-        which is different from 'we could not tell'."""
+    def test_not_applicable_alone_does_not_block(self) -> None:
         v = _verdict(
             _ob(ObligationStatus.SATISFIED, "a"),
             _ob(ObligationStatus.NOT_APPLICABLE, "b"),
@@ -80,17 +86,18 @@ class TestFailClosed:
         assert v.decision is Decision.ALLOW
 
     def test_empty_obligation_set_is_unrepresentable(self) -> None:
-        """A verdict that checked nothing must not be constructible.
-
-        Without this guard, `all(...)` over an empty sequence returns True and
-        an unchecked payment would be ALLOWed.
-        """
-        with pytest.raises(ValueError, match="at least one obligation"):
-            Verdict(obligations=[], policy_version=POLICY, trace_id=TRACE)
+        msg = r"declares nothing|at least one SATISFIED"
+        with pytest.raises(ValueError, match=msg):
+            build_verdict(
+                [],
+                policy_version=POLICY,
+                declared_obligations=[],
+                trace_id=TRACE,
+                mandate_ref=REF,
+            )
 
     def test_decision_cannot_be_assigned(self) -> None:
-        """ALLOW must be earned from the obligation set, never asserted."""
-        v = _verdict(_ob(ObligationStatus.VIOLATED))
+        v = _verdict(_ob(ObligationStatus.SATISFIED))
         with pytest.raises((AttributeError, TypeError)):
             v.decision = Decision.ALLOW  # type: ignore[misc]
 
@@ -103,18 +110,124 @@ class TestFailClosed:
             (ObligationStatus.INDETERMINATE, True),
         ],
     )
-    def test_is_blocking_matrix(
-        self, status: ObligationStatus, blocking: bool
-    ) -> None:
+    def test_is_blocking_matrix(self, status: ObligationStatus, blocking: bool) -> None:
         assert status.is_blocking is blocking
 
 
 # ---------------------------------------------------------------------------
-# Immutability -- verdicts are hash-chained, so mutation would break the ledger
+# S3a regression -- a verdict that affirms nothing is not permission
+# ---------------------------------------------------------------------------
+
+
+class TestMustAffirmSomething:
+    def test_all_not_applicable_is_unconstructible(self) -> None:
+        """S3a. Previously returned ALLOW, having checked nothing."""
+        with pytest.raises(ValueError, match="at least one SATISFIED"):
+            _verdict(
+                _ob(ObligationStatus.NOT_APPLICABLE, "a"),
+                _ob(ObligationStatus.NOT_APPLICABLE, "b"),
+            )
+
+    def test_not_applicable_still_usable_alongside_a_real_check(self) -> None:
+        v = _verdict(
+            _ob(ObligationStatus.SATISFIED, "chain.verified"),
+            _ob(ObligationStatus.NOT_APPLICABLE, "rbi.insurance_category_limit"),
+        )
+        assert v.decision is Decision.ALLOW
+
+
+# ---------------------------------------------------------------------------
+# S4 -- coverage of policy-declared obligations is structural
+# ---------------------------------------------------------------------------
+
+
+class TestCoverage:
+    def test_undeclared_obligation_becomes_indeterminate_and_rejects(self) -> None:
+        """S4. Policy declared three checks; the evaluator reported two."""
+        v = _verdict(
+            _ob(ObligationStatus.SATISFIED, "a"),
+            _ob(ObligationStatus.SATISFIED, "b"),
+            declared=("a", "b", "rbi.afa_threshold"),
+        )
+        assert v.decision is Decision.REJECT
+        missing = [o for o in v.blocking if o.id == "rbi.afa_threshold"]
+        assert len(missing) == 1
+        assert missing[0].status is ObligationStatus.INDETERMINATE
+        assert "not compliance" in missing[0].detail
+
+    def test_full_coverage_allows(self) -> None:
+        v = _verdict(
+            _ob(ObligationStatus.SATISFIED, "a"),
+            _ob(ObligationStatus.SATISFIED, "b"),
+            declared=("a", "b"),
+        )
+        assert v.decision is Decision.ALLOW
+        assert v.coverage == 1.0
+
+    def test_coverage_ratio_reported(self) -> None:
+        v = _verdict(
+            _ob(ObligationStatus.SATISFIED, "a"),
+            declared=("a", "b", "c", "d"),
+        )
+        assert v.coverage == 0.25
+
+    def test_extra_undeclared_obligations_are_permitted(self) -> None:
+        """Protocol-level checks always run, whether policy names them or not."""
+        v = _verdict(
+            _ob(ObligationStatus.SATISFIED, "a"),
+            _ob(
+                ObligationStatus.SATISFIED,
+                "chain.verified",
+                ObligationSource.PROTOCOL,
+            ),
+            declared=("a",),
+        )
+        assert v.decision is Decision.ALLOW
+
+    def test_declared_obligations_required(self) -> None:
+        with pytest.raises(ValueError, match="declares nothing"):
+            build_verdict(
+                [_ob(ObligationStatus.SATISFIED)],
+                policy_version=POLICY,
+                declared_obligations=[],
+                trace_id=TRACE,
+                mandate_ref=REF,
+            )
+
+    def test_duplicate_obligation_ids_rejected(self) -> None:
+        with pytest.raises(ValueError, match="duplicate obligation ids"):
+            _verdict(
+                _ob(ObligationStatus.SATISFIED, "a"),
+                _ob(ObligationStatus.VIOLATED, "a"),
+            )
+
+
+# ---------------------------------------------------------------------------
+# S3b regression -- deep immutability
 # ---------------------------------------------------------------------------
 
 
 class TestImmutability:
+    def test_caller_list_mutation_cannot_alter_verdict(self) -> None:
+        """S3b. Previously flipped ALLOW -> REJECT and changed content_hash."""
+        obs = [_ob(ObligationStatus.SATISFIED, "a")]
+        v = build_verdict(
+            obs,
+            policy_version=POLICY,
+            declared_obligations=("a",),
+            trace_id=TRACE,
+            mandate_ref=REF,
+        )
+        before_decision, before_hash = v.decision, v.content_hash()
+        obs.append(_ob(ObligationStatus.VIOLATED, "injected"))
+        assert v.decision is before_decision
+        assert v.content_hash() == before_hash
+        assert isinstance(v.obligations, tuple)
+
+    def test_verdict_is_hashable(self) -> None:
+        """S3b. hash() raised 'unhashable type: list' when obligations was a list."""
+        assert isinstance(hash(_verdict(_ob(ObligationStatus.SATISFIED))), int)
+
     def test_verdict_is_frozen(self) -> None:
         v = _verdict(_ob(ObligationStatus.SATISFIED))
         with pytest.raises((AttributeError, TypeError)):
@@ -127,34 +240,55 @@ class TestImmutability:
 
 
 # ---------------------------------------------------------------------------
-# Required fields -- an unattributable verdict is not evidence
+# S3d regression -- an unanchored record is not evidence
 # ---------------------------------------------------------------------------
 
 
 class TestRequiredFields:
-    def test_policy_version_required(self) -> None:
-        with pytest.raises(ValueError, match="policy_version"):
-            Verdict(
-                obligations=[_ob(ObligationStatus.SATISFIED)],
-                policy_version="",
-                trace_id=TRACE,
+    @pytest.mark.parametrize(
+        "bad", ["x", "", "0" * 32, "4BF92F3577B34DA6A3CE929D0E0E4736", "abc123"]
+    )
+    def test_invalid_trace_id_rejected(self, bad: str) -> None:
+        """S3d. trace_id='x' was previously accepted."""
+        with pytest.raises(ValueError, match="trace_id"):
+            build_verdict(
+                [_ob(ObligationStatus.SATISFIED)],
+                policy_version=POLICY,
+                declared_obligations=("test.check",),
+                trace_id=bad,
+                mandate_ref=REF,
             )
 
-    def test_trace_id_required(self) -> None:
-        with pytest.raises(ValueError, match="trace_id"):
-            Verdict(
-                obligations=[_ob(ObligationStatus.SATISFIED)],
+    @pytest.mark.parametrize("bad", ["", "not-a-hash", "a" * 63, "A" * 64])
+    def test_invalid_mandate_ref_rejected(self, bad: str) -> None:
+        """S3d. mandate_ref previously defaulted to None."""
+        with pytest.raises(ValueError, match="mandate_ref"):
+            build_verdict(
+                [_ob(ObligationStatus.SATISFIED)],
                 policy_version=POLICY,
-                trace_id="",
+                declared_obligations=("test.check",),
+                trace_id=TRACE,
+                mandate_ref=bad,
+            )
+
+    def test_policy_version_required(self) -> None:
+        with pytest.raises(ValueError, match="policy_version"):
+            build_verdict(
+                [_ob(ObligationStatus.SATISFIED)],
+                policy_version="",
+                declared_obligations=("test.check",),
+                trace_id=TRACE,
+                mandate_ref=REF,
             )
 
     def test_naive_datetime_rejected(self) -> None:
-        """Timezone-naive timestamps are ambiguous in an audit record."""
         with pytest.raises(ValueError, match="timezone-aware"):
-            Verdict(
-                obligations=[_ob(ObligationStatus.SATISFIED)],
+            build_verdict(
+                [_ob(ObligationStatus.SATISFIED)],
                 policy_version=POLICY,
+                declared_obligations=("test.check",),
                 trace_id=TRACE,
+                mandate_ref=REF,
                 evaluated_at=datetime(2026, 8, 23, 12, 0, 0),  # noqa: DTZ001
             )
 
@@ -176,43 +310,93 @@ class TestRequiredFields:
 
 
 # ---------------------------------------------------------------------------
-# Canonical serialization -- third parties must be able to re-verify the chain
+# S3c regression -- canonical serialisation
 # ---------------------------------------------------------------------------
 
 
 class TestCanonicalSerialization:
+    def test_non_json_safe_evidence_is_rejected(self) -> None:
+        """S3c. Previously serialised as '<object at 0x...>' via default=str."""
+
+        class Opaque:
+            pass
+
+        with pytest.raises(ValueError, match="not JSON-safe"):
+            Obligation(
+                id="a.b",
+                status=ObligationStatus.SATISFIED,
+                source=ObligationSource.MANDATE,
+                detail="d",
+                observed=Opaque(),  # type: ignore[arg-type]
+            )
+
+    def test_nested_non_json_safe_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match=re.escape("observed.k[0]")):
+            Obligation(
+                id="a.b",
+                status=ObligationStatus.SATISFIED,
+                source=ObligationSource.MANDATE,
+                detail="d",
+                observed={"k": [object()]},  # type: ignore[list-item]
+            )
+
+    def test_nan_and_infinity_rejected(self) -> None:
+        for bad in (float("nan"), float("inf")):
+            with pytest.raises(ValueError, match="NaN and Infinity"):
+                Obligation(
+                    id="a.b",
+                    status=ObligationStatus.SATISFIED,
+                    source=ObligationSource.MANDATE,
+                    detail="d",
+                    observed=bad,
+                )
+
+    def test_json_safe_evidence_accepted(self) -> None:
+        o = Obligation(
+            id="a.b",
+            status=ObligationStatus.SATISFIED,
+            source=ObligationSource.MANDATE,
+            detail="d",
+            observed={"amount": 750000, "currency": "INR", "ok": True, "tags": ["x"]},
+            expected={"max": 500000},
+        )
+        assert o.observed is not None
+
     def test_is_deterministic(self) -> None:
         ts = datetime(2026, 8, 23, 12, 0, 0, tzinfo=UTC)
-        args = {
-            "obligations": [_ob(ObligationStatus.SATISFIED)],
-            "policy_version": POLICY,
-            "trace_id": TRACE,
-            "evaluated_at": ts,
-        }
-        assert Verdict(**args).canonical_bytes() == Verdict(**args).canonical_bytes()  # type: ignore[arg-type]
 
-    def test_keys_are_sorted_and_compact(self) -> None:
-        v = _verdict(_ob(ObligationStatus.SATISFIED))
-        raw = v.canonical_bytes().decode()
-        assert ", " not in raw and '": ' not in raw, "must be compact"
-        parsed = json.loads(raw)
-        assert list(parsed) == sorted(parsed), "keys must be sorted"
+        def make() -> Verdict:
+            return build_verdict(
+                [_ob(ObligationStatus.SATISFIED)],
+                policy_version=POLICY,
+                declared_obligations=("test.check",),
+                trace_id=TRACE,
+                mandate_ref=REF,
+                evaluated_at=ts,
+            )
+
+        assert make().canonical_bytes() == make().canonical_bytes()
+
+    def test_jcs_sorts_keys(self) -> None:
+        raw = _verdict(_ob(ObligationStatus.SATISFIED)).canonical_bytes().decode()
+        assert raw.index('"decision"') < raw.index('"evaluated_at"')
+        assert raw.index('"obligations"') < raw.index('"policy_version"')
 
     def test_content_hash_changes_when_status_changes(self) -> None:
         ts = datetime(2026, 8, 23, 12, 0, 0, tzinfo=UTC)
-        base = Verdict(
-            obligations=[_ob(ObligationStatus.SATISFIED)],
-            policy_version=POLICY,
-            trace_id=TRACE,
-            evaluated_at=ts,
+        common = {
+            "policy_version": POLICY,
+            "declared_obligations": ("test.check",),
+            "trace_id": TRACE,
+            "mandate_ref": REF,
+            "evaluated_at": ts,
+        }
+        a = build_verdict([_ob(ObligationStatus.SATISFIED)], **common)  # type: ignore[arg-type]
+        b = build_verdict(
+            [_ob(ObligationStatus.SATISFIED), _ob(ObligationStatus.VIOLATED, "z")],
+            **common,  # type: ignore[arg-type]
         )
-        tampered = Verdict(
-            obligations=[_ob(ObligationStatus.VIOLATED)],
-            policy_version=POLICY,
-            trace_id=TRACE,
-            evaluated_at=ts,
-        )
-        assert base.content_hash() != tampered.content_hash()
+        assert a.content_hash() != b.content_hash()
 
     def test_content_hash_is_sha256_hex(self) -> None:
         h = _verdict(_ob(ObligationStatus.SATISFIED)).content_hash()
@@ -239,6 +423,7 @@ class TestBlockingReport:
 
     def test_source_is_recorded_per_obligation(self) -> None:
         v = _verdict(
+            _ob(ObligationStatus.SATISFIED, "ok"),
             _ob(ObligationStatus.VIOLATED, "r", ObligationSource.REGULATORY),
         )
         assert v.blocking[0].source is ObligationSource.REGULATORY

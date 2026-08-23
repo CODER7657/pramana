@@ -3,30 +3,55 @@
 Every decision PRAMANA makes -- from the HTTP gate, the CLI, the benchmark
 runner, or a library caller -- is expressed as exactly one :class:`Verdict`.
 There is no second decision type and no path that returns a bare boolean.
-That is what makes the system centralized rather than merely modular.
 
-Two invariants are enforced structurally rather than by convention:
+Four invariants are enforced structurally rather than by convention. Each one
+exists because its absence was a live defect, not because it seemed tidy.
 
-1. **Fail closed.** :meth:`Verdict.decision` is *derived*, never assigned.
+1. **Fail closed.** :attr:`Verdict.decision` is *derived*, never assigned.
    Anything other than a fully satisfied obligation set yields ``REJECT``.
 
 2. **Absence is not consent.** :attr:`ObligationStatus.INDETERMINATE` exists
    because upstream AP2 constraint evaluation is presence-driven: a constraint
-   that is not disclosed produces no evaluator and therefore no violation.
-   A stripped spending cap reads as "no violations found". Here, an obligation
-   we could not evaluate is ``INDETERMINATE``, and ``INDETERMINATE`` rejects.
+   that is not disclosed produces no evaluator and therefore no violation, so a
+   stripped spending cap reads as "no violations found".
    See docs/adr/0003-absent-constraint-is-not-consent.md
+
+3. **Coverage is structural.** A verdict carries the obligation ids the policy
+   *declared*. Any declared id missing from the results is materialised as an
+   ``INDETERMINATE`` obligation at construction time. Without this, the kernel
+   reproduces the exact failure it was built to prevent -- inability to
+   distinguish "checked and passed" from "never checked".
+
+4. **An authorisation must affirm something.** At least one obligation must be
+   ``SATISFIED``. A verdict in which every obligation is ``NOT_APPLICABLE``
+   checked nothing and must not read as permission.
+
+Verdicts are hash-chained into the evidence ledger, so they are deeply
+immutable and canonicalised with RFC 8785 (JCS) -- not ``json.dumps``, which
+is neither cross-language canonical nor safe against non-JSON payloads.
 """
 
 from __future__ import annotations
 
 import enum
 import hashlib
-import json
-from collections.abc import Sequence
+import re
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TypeAlias
+
+import rfc8785
+
+# Sequence/Mapping rather than list/dict: list is invariant, so list[str] would
+# not satisfy list[JsonValue] and every concrete evidence value would need a cast.
+JsonValue: TypeAlias = (
+    "str | int | float | bool | Sequence[JsonValue] | Mapping[str, JsonValue] | None"
+)
+
+_TRACE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_ALL_ZERO_TRACE_ID = "0" * 32
+_MANDATE_REF_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class Decision(enum.StrEnum):
@@ -37,20 +62,26 @@ class Decision(enum.StrEnum):
 
 
 class ObligationStatus(enum.StrEnum):
-    """Outcome of a single proof obligation.
-
-    ``INDETERMINATE`` is the load-bearing member. It is returned when a
-    predicate could not reach a conclusion -- a required disclosure was
-    absent, a state store was unreachable, a constraint the policy demanded
-    was simply not present in the mandate. It is *not* a soft failure: it
-    rejects exactly as hard as ``VIOLATED``. The two are distinguished only
-    so the evidence record can say which happened.
-    """
+    """Outcome of a single proof obligation."""
 
     SATISFIED = "satisfied"
+    """The predicate ran and the condition held."""
+
     VIOLATED = "violated"
+    """The predicate ran and the condition failed."""
+
     INDETERMINATE = "indeterminate"
+    """The predicate could not reach a conclusion -- a required disclosure was
+    absent, a state store was unreachable, a declared obligation never ran.
+    Not a soft failure: it rejects exactly as hard as ``VIOLATED``. The two are
+    distinguished only so the evidence record can say which happened."""
+
     NOT_APPLICABLE = "not_applicable"
+    """The rule genuinely does not govern this transaction -- e.g. an
+    insurance-category limit on a groceries purchase. This is a positive
+    finding about scope, *not* an inability to evaluate. Because it does not
+    block, invariant 4 exists to stop an all-``NOT_APPLICABLE`` verdict from
+    reading as permission."""
 
     @property
     def is_blocking(self) -> bool:
@@ -61,31 +92,53 @@ class ObligationStatus(enum.StrEnum):
 class ObligationSource(enum.StrEnum):
     """Which authority imposed an obligation.
 
-    Recorded per-obligation because the distinction is legally meaningful in
-    a dispute: a mandate-derived limit was chosen by the user, a regulatory
-    one was not, and a merchant one binds even when the mandate is permissive.
+    Recorded per-obligation because the distinction is legally meaningful in a
+    dispute: a mandate-derived limit was chosen by the user, a regulatory one
+    was not, and a merchant one binds even when the mandate is permissive.
     """
 
     MANDATE = "mandate"
-    """Derived from constraints carried in the AP2 mandate itself."""
-
     REGULATORY = "regulatory"
-    """Imposed by the jurisdiction (e.g. RBI E-mandate Framework, 2026)."""
-
     MERCHANT = "merchant"
-    """Imposed by merchant policy. A mandate cannot weaken these."""
-
     PROTOCOL = "protocol"
-    """Structural integrity of the AP2 chain itself."""
+
+
+def _assert_json_safe(value: object, path: str) -> None:
+    """Reject anything RFC 8785 cannot canonicalise deterministically.
+
+    ``observed``/``expected`` were previously typed ``Any`` and serialised with
+    ``default=str``, which rendered arbitrary objects via ``repr`` -- memory
+    addresses and all. That silently destroyed the determinism the evidence
+    chain depends on.
+    """
+    if value is None or isinstance(value, str | bool | int):
+        return
+    if isinstance(value, float):
+        # JCS defines float serialisation, but NaN/Inf have no JSON form.
+        if value != value or value in (float("inf"), float("-inf")):  # noqa: PLR0124
+            raise ValueError(f"{path}: NaN and Infinity are not serialisable")
+        return
+    if isinstance(value, list):
+        for i, item in enumerate(value):
+            _assert_json_safe(item, f"{path}[{i}]")
+        return
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if not isinstance(k, str):
+                raise TypeError(
+                    f"{path}: dict keys must be str, got {type(k).__name__}"
+                )
+            _assert_json_safe(v, f"{path}.{k}")
+        return
+    raise ValueError(
+        f"{path}: {type(value).__name__} is not JSON-safe. Evidence fields must "
+        "be canonicalisable; convert to a primitive before recording."
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class Obligation:
-    """One machine-checked proof obligation and its result.
-
-    Immutable: obligations are hash-chained into the evidence ledger, so a
-    verdict must never be mutated after construction.
-    """
+    """One machine-checked proof obligation and its result."""
 
     id: str
     """Stable identifier, e.g. ``rbi.afa_threshold``. Never renamed once shipped."""
@@ -95,19 +148,21 @@ class Obligation:
     detail: str
     """Human-readable reason. Shown to the merchant and in the dispute pack."""
 
-    observed: Any = None
-    """What the predicate actually saw. Kept for the evidence record."""
+    observed: JsonValue = None
+    """What the predicate actually saw. JSON-safe only."""
 
-    expected: Any = None
-    """What policy required."""
+    expected: JsonValue = None
+    """What policy required. JSON-safe only."""
 
     def __post_init__(self) -> None:
         if not self.id:
             raise ValueError("Obligation.id must be non-empty")
         if not self.detail:
             raise ValueError(f"Obligation {self.id!r} must carry a detail string")
+        _assert_json_safe(self.observed, f"{self.id}.observed")
+        _assert_json_safe(self.expected, f"{self.id}.expected")
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, JsonValue]:
         return {
             "id": self.id,
             "status": str(self.status),
@@ -120,41 +175,104 @@ class Obligation:
 
 @dataclass(frozen=True, slots=True)
 class Verdict:
-    """The single, canonical output of the PRAMANA kernel.
+    """The single, canonical output of the PRAMANA kernel."""
 
-    ``decision`` is deliberately a derived property. There is no constructor
-    argument that lets a caller assert ``ALLOW`` -- an allow can only be
-    *earned* by presenting an obligation set in which nothing blocks.
-    """
+    obligations: tuple[Obligation, ...]
+    """Coerced to a tuple at construction. A caller's list would otherwise stay
+    mutable through the frozen binding, letting an already-ledgered verdict be
+    flipped from ALLOW to REJECT after the fact."""
 
-    obligations: Sequence[Obligation]
     policy_version: str
     """Version of the policy document evaluated. Stamped for reproducibility."""
 
-    trace_id: str
-    """W3C Trace-Context trace id, propagated from ingestion."""
+    declared_obligations: frozenset[str]
+    """Obligation ids the policy required. Drives the coverage invariant."""
 
-    mandate_ref: str | None = None
+    trace_id: str
+    """W3C Trace-Context trace-id: 32 lowercase hex, not all zeroes."""
+
+    mandate_ref: str
     """``sha256(get_closed_mandate_jwt(chain))`` -- the AP2 canonical receipt
-    reference. Stable across chain depth and disclosure choices, which makes it
-    the correct primary key for the evidence ledger."""
+    reference. Required: an evidence record with no protocol anchor is not
+    evidence."""
 
     evaluated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         if not self.policy_version:
             raise ValueError("Verdict.policy_version is required")
-        if not self.trace_id:
-            raise ValueError("Verdict.trace_id is required")
+        if not _TRACE_ID_RE.match(self.trace_id) or self.trace_id == _ALL_ZERO_TRACE_ID:
+            raise ValueError(
+                f"Verdict.trace_id must be 32 lowercase hex chars and non-zero, "
+                f"got {self.trace_id!r}"
+            )
+        if not _MANDATE_REF_RE.match(self.mandate_ref):
+            raise ValueError(
+                f"Verdict.mandate_ref must be a sha256 hex digest, "
+                f"got {self.mandate_ref!r}"
+            )
         if self.evaluated_at.tzinfo is None:
             raise ValueError("Verdict.evaluated_at must be timezone-aware")
-        if not self.obligations:
-            # An empty obligation set means nothing was checked. That must
-            # never read as success.
+        if not self.declared_obligations:
             raise ValueError(
-                "Verdict requires at least one obligation; an empty set would "
-                "otherwise evaluate to ALLOW without any check having run"
+                "Verdict.declared_obligations is required; a policy that declares "
+                "nothing cannot authorise anything"
             )
+
+        object.__setattr__(self, "obligations", tuple(self.obligations))
+        object.__setattr__(
+            self, "declared_obligations", frozenset(self.declared_obligations)
+        )
+
+        duplicates = self._duplicate_ids()
+        if duplicates:
+            raise ValueError(
+                f"Verdict contains duplicate obligation ids: {sorted(duplicates)}"
+            )
+
+        self._enforce_coverage()
+
+        if not any(o.status is ObligationStatus.SATISFIED for o in self.obligations):
+            raise ValueError(
+                "Verdict requires at least one SATISFIED obligation; a verdict in "
+                "which nothing was affirmatively satisfied is not an authorisation"
+            )
+
+    def _duplicate_ids(self) -> set[str]:
+        seen: set[str] = set()
+        dupes: set[str] = set()
+        for o in self.obligations:
+            if o.id in seen:
+                dupes.add(o.id)
+            seen.add(o.id)
+        return dupes
+
+    def _enforce_coverage(self) -> None:
+        """Materialise any declared-but-unevaluated obligation as INDETERMINATE.
+
+        Synthesising rather than raising is deliberate: the resulting verdict is
+        self-documenting evidence that policy required a check the evaluator
+        never ran. An exception would let a caller swallow that fact.
+        """
+        evaluated = {o.id for o in self.obligations}
+        missing = self.declared_obligations - evaluated
+        if not missing:
+            return
+        synthesized = tuple(
+            Obligation(
+                id=oid,
+                status=ObligationStatus.INDETERMINATE,
+                source=ObligationSource.MERCHANT,
+                detail=(
+                    "Policy declared this obligation but no predicate reported a "
+                    "result for it. Absence of a result is not compliance."
+                ),
+                expected="evaluated",
+                observed=None,
+            )
+            for oid in sorted(missing)
+        )
+        object.__setattr__(self, "obligations", self.obligations + synthesized)
 
     @property
     def decision(self) -> Decision:
@@ -172,31 +290,61 @@ class Verdict:
     def is_allowed(self) -> bool:
         return self.decision is Decision.ALLOW
 
-    def to_dict(self) -> dict[str, Any]:
+    @property
+    def coverage(self) -> float:
+        """Fraction of declared obligations that produced a real result."""
+        conclusive = {
+            o.id
+            for o in self.obligations
+            if o.status is not ObligationStatus.INDETERMINATE
+        }
+        return len(self.declared_obligations & conclusive) / len(
+            self.declared_obligations
+        )
+
+    def to_dict(self) -> dict[str, JsonValue]:
         return {
             "decision": str(self.decision),
             "policy_version": self.policy_version,
+            "declared_obligations": sorted(self.declared_obligations),
             "trace_id": self.trace_id,
             "mandate_ref": self.mandate_ref,
-            "evaluated_at": self.evaluated_at.isoformat(),
+            "evaluated_at": self.evaluated_at.astimezone(UTC).isoformat(),
             "obligations": [o.to_dict() for o in self.obligations],
         }
 
     def canonical_bytes(self) -> bytes:
-        """Deterministic serialization for hash chaining.
+        """RFC 8785 (JCS) canonicalisation.
 
-        Sorted keys, no insignificant whitespace, UTF-8. Two verdicts with
-        identical content must produce byte-identical output on any platform
-        or the evidence chain is not verifiable by a third party.
+        A third party in a dispute must be able to recompute this hash from the
+        same facts in a different language. ``json.dumps`` does not provide
+        that guarantee; JCS does.
         """
-        return json.dumps(
-            self.to_dict(),
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            default=str,
-        ).encode("utf-8")
+        return rfc8785.dumps(self.to_dict())
 
     def content_hash(self) -> str:
         """SHA-256 of :meth:`canonical_bytes`, hex-encoded."""
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
+
+    def __hash__(self) -> int:
+        return hash(self.content_hash())
+
+
+def build_verdict(
+    obligations: Iterable[Obligation],
+    *,
+    policy_version: str,
+    declared_obligations: Iterable[str],
+    trace_id: str,
+    mandate_ref: str,
+    evaluated_at: datetime | None = None,
+) -> Verdict:
+    """Preferred constructor. Accepts any iterable and normalises it."""
+    return Verdict(
+        obligations=tuple(obligations),
+        policy_version=policy_version,
+        declared_obligations=frozenset(declared_obligations),
+        trace_id=trace_id,
+        mandate_ref=mandate_ref,
+        evaluated_at=evaluated_at or datetime.now(UTC),
+    )

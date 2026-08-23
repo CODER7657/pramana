@@ -23,6 +23,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pyyaml>=6.0",
+    "rfc8785>=0.1",
     "structlog>=24.4",
     "opentelemetry-api>=1.27",
     "opentelemetry-sdk>=1.27",
@@ -81,6 +82,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "ANN", "PLR2004"]   # asserts and magic numbers are the point
 "bench/**" = ["S101", "ANN"]
+# Spike/demo scripts are CLI tools; stdout is their entire purpose.
+"scripts/**" = ["T201", "ANN", "BLE001", "PLR0915"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
