@@ -52,6 +52,7 @@ include = ["pramana*"]
 [tool.ruff]
 line-length = 88
 target-version = "py311"
+extend-exclude = [".venv", ".claude", "build", "dist"]
 
 [tool.ruff.lint]
 select = [
@@ -82,8 +83,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "ANN", "PLR2004"]   # asserts and magic numbers are the point
 "bench/**" = ["S101", "ANN"]
-# Spike/demo scripts are CLI tools; stdout is their entire purpose.
+# CLI tools; stdout is their entire purpose.
 "scripts/**" = ["T201", "ANN", "BLE001", "PLR0915"]
+"pramana/cli.py" = ["T201"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

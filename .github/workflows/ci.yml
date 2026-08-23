@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned upstream AP2 revision. Must match pyproject.toml exactly.
+  # See docs/adr/0002-pin-ap2-by-commit-sha.md
+  AP2_PINNED_SHA: e1ea56db72a6385bce3e5c1112b3a56ce60acb43
+
+jobs:
+  supply-chain:
+    name: Supply-chain pin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AP2 dependency must be pinned to the expected commit SHA
+        # A moved tag or a silently-resolved branch would put unreviewed code
+        # into the trusted path of a payment verifier. Fail loudly instead.
+        run: |
+          set -euo pipefail
+          if ! grep -qF "AP2@${AP2_PINNED_SHA}" pyproject.toml; then
+            echo "::error::AP2 dependency is not pinned to ${AP2_PINNED_SHA}"
+            grep -n 'AP2@' pyproject.toml || echo "no AP2 git pin found at all"
+            exit 1
+          fi
+          if grep -qE 'AP2@(main|master|v[0-9])' pyproject.toml; then
+            echo "::error::AP2 pinned to a mutable ref (branch or tag). Use a commit SHA."
+            exit 1
+          fi
+          echo "AP2 pinned to ${AP2_PINNED_SHA}"
+
+  test:
+    name: Lint, type-check, test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+        continue-on-error: true
+
+      - name: mypy (strict)
+        run: mypy pramana
+
+      - name: Tests
+        run: pytest -q --cov=pramana --cov-report=term-missing
+
+      - name: CLI runs on a fresh install
+        # The README promises a working demo from a clean clone. Prove it.
+        run: |
+          set -euo pipefail
+          pramana --version
+          pramana demo
+          if pramana verify --withhold > /dev/null; then
+            echo "::error::withheld-constraint verdict must exit non-zero (REJECT)"
+            exit 1
+          fi
+          echo "fail-closed exit code confirmed"
+
+  invariants:
+    name: Kernel safety invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Fail-closed regression suite must pass in full
+        # These encode the four defects found in review on 2026-08-23. If any
+        # one of them regresses, an unchecked payment can be authorised.
+        run: |
+          pytest tests/unit/test_verdict.py -q \
+            -k "FailClosed or MustAffirmSomething or Coverage or Immutability" \
+            --no-header
