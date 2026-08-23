@@ -42,7 +42,12 @@ coordination through GitHub Security Advisory.
 | Report drafted | 2026-08-23 |
 | Submitted to g.co/vulnz | **Not yet submitted** |
 | Response window closes | — |
-| Earliest publication | Not before the response window closes |
+| Earliest publication | 2026-09-05, and not before the response window closes |
+
+Until that date this repository is private. Publishing it is the disclosure: the
+findings are described here substantively, and only the runnable reproduction is
+held back. Flipping visibility to public is therefore the act being scheduled,
+not a separate step.
 
 Reproduction details are **withheld from this repository** until that process
 concludes. The scripts that demonstrate the findings are held outside this
