@@ -11,7 +11,6 @@ Two themes run through this file:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -20,12 +19,13 @@ from pramana.kernel.verify.policy import (
     ObligationSpec,
     Policy,
     PolicyError,
+    builtin_policy,
     load_policy,
 )
 from pramana.kernel.verify.rbi import PaymentFacts, evaluate
 
 NOW = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
-POLICY_PATH = Path("policies/rbi-in.yaml")
+# Resolved through the package, not the working directory.
 
 MINIMAL = """
 version: "t@1"
@@ -37,7 +37,7 @@ obligations:
 
 
 def spec_for(obligation_id: str) -> ObligationSpec:
-    policy = load_policy(POLICY_PATH)
+    policy = builtin_policy()
     found = policy.spec(obligation_id)
     assert found is not None, obligation_id
     return found
@@ -66,14 +66,14 @@ def compliant(**overrides: object) -> PaymentFacts:
 
 class TestLoading:
     def test_shipped_policy_loads(self) -> None:
-        policy = load_policy(POLICY_PATH)
+        policy = builtin_policy()
         assert policy.version == "rbi-in@1"
         assert policy.jurisdiction == "IN"
         assert len(policy.declared_ids) == 12
 
     def test_every_regulatory_obligation_cites_the_notification(self) -> None:
         """The regulatory-credibility play depends on this being true."""
-        for s in load_policy(POLICY_PATH).by_source(ObligationSource.REGULATORY):
+        for s in builtin_policy().by_source(ObligationSource.REGULATORY):
             assert s.citation is not None, s.id
             assert s.citation.authority == "RBI"
             assert "E-mandate Framework, 2026" in s.citation.reference
@@ -96,7 +96,7 @@ class TestLoading:
 
     def test_yaml_string_and_path_both_work(self) -> None:
         assert load_policy(MINIMAL).version == "t@1"
-        assert load_policy(POLICY_PATH).version == "rbi-in@1"
+        assert builtin_policy().version == "rbi-in@1"
 
     @pytest.mark.parametrize(
         ("doc", "match"),
@@ -363,7 +363,7 @@ class TestRegistrationAndValidity:
 
 class TestFailClosed:
     def test_no_evidence_yields_all_indeterminate(self) -> None:
-        specs = load_policy(POLICY_PATH).by_source(ObligationSource.REGULATORY)
+        specs = builtin_policy().by_source(ObligationSource.REGULATORY)
         obs = evaluate(specs, PaymentFacts())
         assert len(obs) == 5
         assert all(o.status is ObligationStatus.INDETERMINATE for o in obs)
@@ -381,7 +381,7 @@ class TestFailClosed:
         assert "no predicate is registered" in obs[0].detail
 
     def test_compliant_payment_passes_every_regulatory_check(self) -> None:
-        specs = load_policy(POLICY_PATH).by_source(ObligationSource.REGULATORY)
+        specs = builtin_policy().by_source(ObligationSource.REGULATORY)
         obs = evaluate(specs, compliant())
         assert not any(o.status.is_blocking for o in obs)
 
@@ -403,7 +403,7 @@ class TestPaymentFacts:
 
 class TestPolicySerialisation:
     def test_round_trips_to_a_dict(self) -> None:
-        payload = load_policy(POLICY_PATH).to_dict()
+        payload = builtin_policy().to_dict()
         assert payload["version"] == "rbi-in@1"
         cited = [
             o for o in payload["obligations"] if o["id"] == "rbi.afa_threshold"

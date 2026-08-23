@@ -42,7 +42,13 @@ dev = [
 pramana = "pramana.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["pramana*"]
+include = ["pramana*", "bench*"]
+
+# The default policy ships inside the package. Resolving it by a path relative
+# to the working directory meant `pytest` from tests/ produced 34 failures and
+# `pramana bench` from any other directory could not find it at all.
+[tool.setuptools.package-data]
+pramana = ["policies/*.yaml"]
 
 # ---------------------------------------------------------------------------
 # Ruff

@@ -22,10 +22,11 @@ is a load error rather than a silently skipped check.
 
 from __future__ import annotations
 
+import importlib.resources
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import yaml
 
@@ -232,3 +233,30 @@ def load_policy(source: str | Path) -> Policy:
             _spec_from(o, i) for i, o in enumerate(raw_obligations)
         ),
     )
+
+
+BUILTIN_POLICIES: Final = ("rbi-in",)
+"""Policies shipped inside the package."""
+
+
+def builtin_policy(name: str = "rbi-in") -> Policy:
+    """Load a policy that ships with PRAMANA, from anywhere.
+
+    Resolved through ``importlib.resources`` rather than a path relative to the
+    working directory. The earlier ``Path("policies/rbi-in.yaml")`` worked only
+    when the process happened to be started from the repository root: running
+    ``pytest`` from ``tests/`` produced 34 failures, and ``pramana bench`` from
+    any other directory could not find the file at all.
+    """
+    if name not in BUILTIN_POLICIES:
+        raise PolicyError(
+            f"unknown builtin policy {name!r}; available: {list(BUILTIN_POLICIES)}"
+        )
+    resource = importlib.resources.files("pramana") / "policies" / f"{name}.yaml"
+    try:
+        return load_policy(resource.read_text(encoding="utf-8"))
+    except (OSError, FileNotFoundError) as exc:
+        raise PolicyError(
+            f"builtin policy {name!r} is missing from the installed package. "
+            "This usually means package-data was not included in the build."
+        ) from exc

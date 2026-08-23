@@ -34,9 +34,11 @@ from bench.cases import RC_CLASSES, SEMANTIC_CLASSES, BenchCase, all_cases
 from pramana.kernel.gate import Kernel, PaymentRequest
 from pramana.kernel.ledger.chain_log import EvidenceLedger, MemoryStore
 from pramana.kernel.verdict import ObligationSource
-from pramana.kernel.verify.policy import Policy, load_policy
+from pramana.kernel.verify.policy import Policy, builtin_policy, load_policy
 
-DEFAULT_POLICY = Path("policies/rbi-in.yaml")
+DEFAULT_POLICY: Path | None = None
+"""``None`` means "the policy shipped in the package". A path here would
+be resolved against the working directory, which is how this broke."""
 
 
 def baseline_policy(full: Policy, case: BenchCase) -> Policy:
@@ -309,9 +311,9 @@ def _request(case: BenchCase) -> PaymentRequest:
     )
 
 
-def run(policy_path: Path = DEFAULT_POLICY) -> BenchReport:
+def run(policy_path: Path | None = DEFAULT_POLICY) -> BenchReport:
     """Evaluate every frozen case under both verifiers."""
-    policy = load_policy(policy_path)
+    policy = load_policy(policy_path) if policy_path else builtin_policy()
     outcomes: list[CaseOutcome] = []
 
     for case in all_cases():

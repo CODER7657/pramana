@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,13 +21,13 @@ from pramana.gateway.app import create_app
 from pramana.kernel.gate import Kernel, PaymentRequest
 from pramana.kernel.ledger.chain_log import EvidenceLedger, MemoryStore
 from pramana.kernel.risk.signals import RiskBand, RiskSignal
-from pramana.kernel.verify.policy import load_policy
+from pramana.kernel.verify.policy import builtin_policy
 from pramana.kernel.verify.rbi import PaymentFacts
 
 NOW = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
 REF = hashlib.sha256(b"mandate").hexdigest()
 INBOUND = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
-POLICY = load_policy(Path("policies/rbi-in.yaml"))
+POLICY = builtin_policy()
 
 
 class FixedRisk:

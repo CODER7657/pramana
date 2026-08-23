@@ -38,14 +38,14 @@ from pramana.kernel.verdict import (
     ObligationSource,
     ObligationStatus,
 )
-from pramana.kernel.verify.policy import load_policy
+from pramana.kernel.verify.policy import builtin_policy
 from pramana.kernel.verify.rbi import PaymentFacts
 
 NOW = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
 REF = hashlib.sha256(b"mandate").hexdigest()
 INBOUND = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 
-POLICY = load_policy(Path("policies/rbi-in.yaml"))
+POLICY = builtin_policy()
 
 
 def ob(
