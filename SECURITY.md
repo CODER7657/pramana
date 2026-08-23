@@ -44,10 +44,13 @@ coordination through GitHub Security Advisory.
 | Response window closes | — |
 | Earliest publication | Not before the response window closes |
 
-Reproduction details are **withheld from this repository** until that process concludes.
-The `scripts/spike_*.py` files demonstrate the *class* of issue against locally generated
-mandates; they are diagnostic tools for our own gate, not exploits against any deployed
-system.
+Reproduction details are **withheld from this repository** until that process
+concludes. The scripts that demonstrate the findings are held outside this
+repository and were supplied directly to the vendor with the report. They will
+be added here once disclosure concludes.
+
+They target locally generated keys and locally constructed mandates only. They
+are diagnostic tools for our own gate, not exploits against any deployed system.
 
 If upstream requests a longer embargo, we will hold, and will describe our mitigation
 without reference to the upstream findings.

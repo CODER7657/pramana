@@ -2,7 +2,8 @@
 
 * Status: Accepted
 * Date: 2026-08-23
-* Evidence: `scripts/spike_disclosure.py`, `scripts/spike_chain_e2e.py`
+* Evidence: reproduction scripts held outside the repository pending
+  coordinated disclosure. See SECURITY.md.
 
 ## Context
 
@@ -22,7 +23,7 @@ These two facts compose badly.
 
 ## Measured result
 
-`scripts/spike_chain_e2e.py`, against locally generated keys:
+the held reproduction, run against locally generated keys:
 
 | Presentation | chain verifies | constraints visible | violations | outcome |
 | --- | --- | --- | --- | --- |

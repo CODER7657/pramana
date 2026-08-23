@@ -45,8 +45,7 @@ chain verifies. And it reports **zero constraint violations** — because the sp
 was never presented, so there was nothing left to evaluate.
 
 We measured this end-to-end against the AP2 reference implementation: a ₹7,500 charge
-cleared against a ₹5,000 cap. Reproduction in
-[`scripts/spike_chain_e2e.py`](scripts/spike_chain_e2e.py), analysis in
+cleared against a ₹5,000 cap. Reproduction held pending disclosure (see [SECURITY.md](SECURITY.md)); analysis in
 [ADR-0003](docs/adr/0003-absent-constraint-is-not-consent.md).
 
 A verifier that cannot distinguish *"checked and passed"* from *"never checked"* is not a
@@ -211,8 +210,8 @@ every time, and a test asserts it cannot be dropped.
 
 What the comparison *does* support: the baseline column is not invented.
 Presence-driven evaluation is the measured behaviour of the AP2 reference
-implementation at `e1ea56db`, reproduced end-to-end in
-[`scripts/spike_chain_e2e.py`](scripts/spike_chain_e2e.py). What it does *not*
+implementation at `e1ea56db`, reproduced end-to-end in a script held pending
+disclosure (see [SECURITY.md](SECURITY.md)). What it does *not*
 support: any claim about AIP-Bench, whose artifacts release 2026-10-04 and which
 we have not run.
 
