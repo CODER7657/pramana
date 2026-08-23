@@ -102,6 +102,11 @@ class ObligationSource(enum.StrEnum):
     MERCHANT = "merchant"
     PROTOCOL = "protocol"
 
+    RISK = "risk"
+    """An advisory signal from an external scorer -- e.g. a Vulcan-class fraud
+    model. Advisory obligations can only ever block; they never contribute to
+    an ALLOW. See pramana.kernel.risk.signals and ADR-0005."""
+
 
 def _assert_json_safe(value: object, path: str) -> None:
     """Reject anything RFC 8785 cannot canonicalise deterministically.
