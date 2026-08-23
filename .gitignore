@@ -1,0 +1,38 @@
+# Secrets. Never commit a key, even a test key.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!tests/**/fixtures/*.key      # deterministic throwaway test keys only
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local state -- the ledger and nonce store are runtime artifacts
+*.sqlite
+*.sqlite3
+*.db
+var/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
