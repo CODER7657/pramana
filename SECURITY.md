@@ -39,10 +39,16 @@ coordination through GitHub Security Advisory.
 | Stage | Status |
 | --- | --- |
 | Findings identified | 2026-08-23 |
-| Report drafted | 2026-08-23 |
-| Submitted to g.co/vulnz | **Not yet submitted** |
-| Response window closes | — |
+| Reports drafted | 2026-08-23 |
+| **Submitted to Google OSS VRP** | **2026-08-23** |
+| Tracking | [551304805](https://issuetracker.google.com/issues/551304805), [551303152](https://issuetracker.google.com/issues/551303152) |
+| Response window closes | 2026-08-28 (5 working days) |
 | Earliest publication | 2026-09-05, and not before the response window closes |
+
+Both findings were reported through Google's Bug Hunters programme (OSS VRP) on
+23 August 2026, under the two issue-tracker references above. Those links are
+visible to the reporter and to Google; they will not resolve for third parties.
+They are recorded here so the disclosure is verifiable rather than asserted.
 
 Until that date this repository is private. Publishing it is the disclosure: the
 findings are described here substantively, and only the runnable reproduction is
@@ -60,8 +66,8 @@ are diagnostic tools for our own gate, not exploits against any deployed system.
 If upstream requests a longer embargo, we will hold, and will describe our mitigation
 without reference to the upstream findings.
 
-This table is updated as the process moves. If it says "not yet submitted", that is the
-current truth.
+This table is updated as the process moves. It states what has actually
+happened, not what is planned.
 
 ## Scope of our claims
 

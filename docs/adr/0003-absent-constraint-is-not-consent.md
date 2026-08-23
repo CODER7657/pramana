@@ -2,6 +2,7 @@
 
 * Status: Accepted
 * Date: 2026-08-23
+* Disclosed: reported to Google OSS VRP 2026-08-23 (issues 551304805, 551303152)
 * Evidence: reproduction scripts held outside the repository pending
   coordinated disclosure. See SECURITY.md.
 

@@ -291,10 +291,11 @@ swept exhaustively in [`tests/unit/test_risk_signals.py`](tests/unit/test_risk_s
 Two issues found in the AP2 reference implementation at commit `e1ea56db` while building
 against it.
 
-**Disclosure status: report drafted, not yet submitted.** It will be submitted to Google
-via [g.co/vulnz](https://g.co/vulnz), whose stated response window is 5 working days.
-Reproduction details are withheld from this repository until that process concludes. This
-line will be updated with the actual submission date.
+**Disclosure status: reported to Google OSS VRP on 2026-08-23**, as issues
+[551304805](https://issuetracker.google.com/issues/551304805) and
+[551303152](https://issuetracker.google.com/issues/551303152). The stated response window
+closed 2026-08-28. Reproduction scripts are withheld from this repository until the
+process concludes; the mechanism is described in the ADRs. See [SECURITY.md](SECURITY.md).
 
 1. **Presence-driven constraint evaluation** — a withheld constraint is indistinguishable
    from a satisfied one. ([ADR-0003](docs/adr/0003-absent-constraint-is-not-consent.md))
