@@ -40,34 +40,35 @@ coordination through GitHub Security Advisory.
 | --- | --- |
 | Findings identified | 2026-08-23 |
 | Reports drafted | 2026-08-23 |
-| **Submitted to Google OSS VRP** | **2026-08-23** |
+| Submitted to Google OSS VRP | 2026-08-23 |
 | Tracking | [551304805](https://issuetracker.google.com/issues/551304805), [551303152](https://issuetracker.google.com/issues/551303152) |
-| Response window closes | 2026-08-28 (5 working days) |
-| Earliest publication | 2026-09-05, and not before the response window closes |
+| **Vendor response** | **2026-08-23 - closed "Won't Fix (Intended Behavior)"** |
+| Embargo | Lifted. The vendor invited a public issue. |
 
-Both findings were reported through Google's Bug Hunters programme (OSS VRP) on
-23 August 2026, under the two issue-tracker references above. Those links are
-visible to the reporter and to Google; they will not resolve for third parties.
-They are recorded here so the disclosure is verifiable rather than asserted.
+### What the vendor said
 
-Until that date this repository is private. Publishing it is the disclosure: the
-findings are described here substantively, and only the runnable reproduction is
-held back. Flipping visibility to public is therefore the act being scheduled,
-not a separate step.
+Google acknowledged the mechanism directly:
 
-Reproduction details are **withheld from this repository** until that process
-concludes. The scripts that demonstrate the findings are held outside this
-repository and were supplied directly to the vendor with the report. They will
-be added here once disclosure concludes.
+> "You've clearly identified a mechanism where a selectively withheld constraint
+> could lead to a permissions bypass, potentially allowing reported over-cap
+> payments."
 
-They target locally generated keys and locally constructed mandates only. They
-are diagnostic tools for our own gate, not exploits against any deployed system.
+They declined a monetary reward because AP2 falls outside the tiered scope of
+the OSS VRP -- a **reward-eligibility** determination, not a judgement that the
+finding is wrong -- closed the reports as *Won't Fix (Intended Behavior)*, and
+encouraged a public issue or pull request on the repository instead.
 
-If upstream requests a longer embargo, we will hold, and will describe our mitigation
-without reference to the upstream findings.
+We take that at face value and report it without spin:
 
-This table is updated as the process moves. It states what has actually
-happened, not what is planned.
+* The mechanism is **confirmed**, in writing, by the vendor.
+* It is **not going to be fixed** upstream, because it is considered intended
+  behaviour of the protocol.
+* Public disclosure is **invited**, so the embargo no longer applies.
+
+The third point is why reproduction scripts are now in this repository. The
+second is why this project exists: a verifier that reads an empty violation
+list as compliance will keep authorising uncapped payments, and no upstream fix
+is coming to stop it.
 
 ## Scope of our claims
 

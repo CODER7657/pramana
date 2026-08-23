@@ -1,7 +1,3 @@
-# Held pending coordinated disclosure. SECURITY.md states reproduction
-# details are withheld from this repository; these are that reproduction.
-scripts/spike_*.py
-
 # Secrets. Never commit a key, even a test key.
 .env
 .env.*

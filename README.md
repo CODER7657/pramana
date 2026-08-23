@@ -45,7 +45,8 @@ chain verifies. And it reports **zero constraint violations** — because the sp
 was never presented, so there was nothing left to evaluate.
 
 We measured this end-to-end against the AP2 reference implementation: a ₹7,500 charge
-cleared against a ₹5,000 cap. Reproduction held pending disclosure (see [SECURITY.md](SECURITY.md)); analysis in
+cleared against a ₹5,000 cap. Reproduction in
+[`scripts/spike_chain_e2e.py`](scripts/spike_chain_e2e.py), analysis in
 [ADR-0003](docs/adr/0003-absent-constraint-is-not-consent.md).
 
 A verifier that cannot distinguish *"checked and passed"* from *"never checked"* is not a
@@ -243,8 +244,8 @@ every time, and a test asserts it cannot be dropped.
 
 What the comparison *does* support: the baseline column is not invented.
 Presence-driven evaluation is the measured behaviour of the AP2 reference
-implementation at `e1ea56db`, reproduced end-to-end in a script held pending
-disclosure (see [SECURITY.md](SECURITY.md)). What it does *not*
+implementation at `e1ea56db`, reproduced end-to-end in
+[`scripts/spike_chain_e2e.py`](scripts/spike_chain_e2e.py). What it does *not*
 support: any claim about AIP-Bench, whose artifacts release 2026-10-04 and which
 we have not run.
 
@@ -324,11 +325,19 @@ swept exhaustively in [`tests/unit/test_risk_signals.py`](tests/unit/test_risk_s
 Two issues found in the AP2 reference implementation at commit `e1ea56db` while building
 against it.
 
-**Disclosure status: reported to Google OSS VRP on 2026-08-23**, as issues
-[551304805](https://issuetracker.google.com/issues/551304805) and
-[551303152](https://issuetracker.google.com/issues/551303152). The stated response window
-closed 2026-08-28. Reproduction scripts are withheld from this repository until the
-process concludes; the mechanism is described in the ADRs. See [SECURITY.md](SECURITY.md).
+**Disclosure: reported to Google OSS VRP on 2026-08-23** (issues
+[551304805](https://issuetracker.google.com/issues/551304805),
+[551303152](https://issuetracker.google.com/issues/551303152)) and **closed the same day
+as "Won't Fix (Intended Behavior)"**.
+
+Google confirmed the mechanism — *"you've clearly identified a mechanism where a
+selectively withheld constraint could lead to a permissions bypass"* — declined a bounty
+on project-tier eligibility grounds, and invited a public issue instead. Reproduction is
+therefore published here. See [SECURITY.md](SECURITY.md).
+
+**That outcome is the argument for this project, not against it.** The behaviour is
+confirmed, it is considered intended, and no upstream fix is coming. An integrator who
+reads an empty violation list as compliance will keep authorising uncapped payments.
 
 1. **Presence-driven constraint evaluation** — a withheld constraint is indistinguishable
    from a satisfied one. ([ADR-0003](docs/adr/0003-absent-constraint-is-not-consent.md))

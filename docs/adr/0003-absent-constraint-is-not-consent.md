@@ -2,7 +2,10 @@
 
 * Status: Accepted
 * Date: 2026-08-23
-* Disclosed: reported to Google OSS VRP 2026-08-23 (issues 551304805, 551303152)
+* Disclosed: reported to Google OSS VRP 2026-08-23 (issues 551304805,
+  551303152). Closed "Won't Fix (Intended Behavior)" the same day; the
+  vendor confirmed the mechanism and invited a public issue. No upstream
+  fix is expected, which is precisely why this control exists.
 * Evidence: reproduction scripts held outside the repository pending
   coordinated disclosure. See SECURITY.md.
 
