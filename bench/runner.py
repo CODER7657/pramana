@@ -335,9 +335,24 @@ def _request(case: BenchCase) -> PaymentRequest:
 
 
 def run(policy_path: Path | None = DEFAULT_POLICY) -> BenchReport:
-    """Evaluate every frozen case under both verifiers."""
+    """Evaluate every frozen case under both verifiers.
+
+    One discarded evaluation runs first. Without it the first measured case
+    carried every one-time cost in the process -- import, first allocation of
+    each dataclass, the first hash -- and came in 4-5x the steady state
+    locally. Since the reported "p99" over 21 cases *is* the maximum
+    observation, that one case was the p99, every run. On a cold CI runner it
+    was once 422ms against a 50ms bound, and the assertion that failed was
+    measuring the scheduler rather than the gate.
+
+    The POSTMORTEM's 500-run harness already discards 50 warm-up runs for the
+    same reason. This makes the cheap number honest in the same way.
+    """
     policy = load_policy(policy_path) if policy_path else builtin_policy()
     outcomes: list[CaseOutcome] = []
+
+    warmup = all_cases()[0]
+    Kernel(policy, ledger=EvidenceLedger(MemoryStore())).evaluate(_request(warmup))
 
     for case in all_cases():
         request = _request(case)

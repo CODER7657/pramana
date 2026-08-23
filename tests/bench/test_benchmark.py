@@ -133,7 +133,16 @@ class TestLatency:
         assert payload["latency_p99_ms"] >= payload["latency_p50_ms"]
 
     def test_p99_is_within_a_checkout_budget(self) -> None:
-        """A gate that adds 400ms is unshippable regardless of accuracy."""
+        """A gate that adds 400ms is unshippable regardless of accuracy.
+
+        The bound is ~200x the observed value on purpose. Over 21 cases this
+        "p99" is the maximum observation, so on shared CI hardware it measures
+        the runner's scheduler as much as the gate. What it can still catch is
+        the regression that matters: something with a network call or a model
+        on the money path, which would miss by orders of magnitude rather than
+        by jitter. `run()` discards a warm-up evaluation first -- before it
+        did, this assertion failed once at 422ms on a cold runner.
+        """
         assert REPORT.latency_p(0.99) < 50.0
 
 

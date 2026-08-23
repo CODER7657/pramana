@@ -277,7 +277,7 @@ pramana bench
 
   LATENCY (whole decision, including an in-memory ledger write)
     over 21 cases -- too few for a real p99
-    p50 0.25ms   p95 0.30ms   p99 1.28ms
+    p50 0.26ms   p95 0.34ms   p99 0.36ms
 ```
 
 Classes follow the taxonomy in Louck, [arXiv:2607.21824](https://arxiv.org/abs/2607.21824)
