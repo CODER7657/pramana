@@ -115,12 +115,12 @@ in a dispute can recompute the hash from the same facts in a different language.
 
 ## Status
 
-Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 366 tests, all green.
+Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 386 tests, all green.
 
 | Component | State |
 | --- | --- |
 | Verdict kernel — invariants, JCS canonicalisation | **Built**, 45 tests |
-| CLI — `demo` / `verify` / `explain` / `inject` / `dispute` | **Built**, 28 tests |
+| CLI — `demo`/`verify`/`explain`/`inject`/`dispute`/`replay`/`providers` | **Built**, 37 tests |
 | AP2 chain verification spike | **Built**, reproduces the finding |
 | LLM provider chain — Cerebras → Groq → NVIDIA, cache, offline | **Built**, 40 tests |
 | Verdict explainer + prompt-injection boundary | **Built**, 44 tests |
@@ -192,6 +192,37 @@ presenting a chain with the cap withheld produces a transaction that is statisti
 unremarkable: known agent, valid chain, amount inside its own historical range, familiar
 merchant. There is no anomaly to detect. Semantic attacks weaken as models improve;
 structural ones do not.
+
+### Where PRAMANA is better, not merely different
+
+| | Learned scorer | PRAMANA |
+| --- | --- | --- |
+| Output | a score | a named obligation + the provision behind it |
+| Reproducible in 8 months | no — weights moved | **yes, byte-identical** |
+| Verifiable by a third party | no | **yes, without our code** |
+| Cites a regulation | no | **required** |
+
+```bash
+pramana replay
+```
+
+```
+  record 1 (reject)
+    stored verdict hash     : 57c33c05adbb1bffca90d0fc1867c148...
+    recomputed from the body: 57c33c05adbb1bffca90d0fc1867c148...
+    identical               : True
+```
+
+Every `REGULATORY` obligation **must** carry a `Citation` — the constructor
+rejects one without it. So a rejection reads *"per RBI / Digital Payments —
+E-mandate Framework, 2026 / AFA exemption ceiling"*, not *"risk score 0.94"*.
+See [ADR-0006](docs/adr/0006-verdicts-are-compliance-artifacts.md).
+
+This is not a claim to be better at detecting fraud. It is not, and does not try
+to be. It is a claim that **authority decisions should be provable**, and that a
+probabilistic system cannot make them provable however good it gets.
+
+### The integration contract
 
 So PRAMANA integrates rather than competes, under one invariant:
 

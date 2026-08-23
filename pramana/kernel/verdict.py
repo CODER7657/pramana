@@ -142,6 +142,58 @@ def _assert_json_safe(value: object, path: str) -> None:
 
 
 @dataclass(frozen=True, slots=True)
+class Citation:
+    """The authority that imposed an obligation.
+
+    This is what makes a verdict a *compliance artifact* rather than a
+    decision. A probabilistic scorer can tell a merchant a transaction looked
+    risky; it cannot name the provision that forbade it. A regulator, an
+    auditor, and a disputing customer all need the provision.
+
+    Every ``REGULATORY`` obligation must carry one -- enforced in
+    :meth:`Obligation.__post_init__`. You cannot claim a rule rejected a
+    payment without saying which rule.
+    """
+
+    authority: str
+    """Who imposed it, e.g. ``"RBI"``, ``"AP2"``, ``"merchant"``."""
+
+    reference: str
+    """The instrument, e.g. ``"Digital Payments - E-mandate Framework, 2026"``."""
+
+    clause: str | None = None
+    """The specific provision, where one is identifiable."""
+
+    effective_from: str | None = None
+    """ISO date the provision took effect. A rule cannot bind a transaction
+    that predates it, and a dispute may turn on exactly that."""
+
+    url: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.authority:
+            raise ValueError("Citation.authority must be non-empty")
+        if not self.reference:
+            raise ValueError("Citation.reference must be non-empty")
+
+    def to_dict(self) -> dict[str, JsonValue]:
+        return {
+            "authority": self.authority,
+            "reference": self.reference,
+            "clause": self.clause,
+            "effective_from": self.effective_from,
+            "url": self.url,
+        }
+
+    def render(self) -> str:
+        """One-line human form, for the dispute pack and the CLI."""
+        parts = [self.authority, self.reference]
+        if self.clause:
+            parts.append(self.clause)
+        return " / ".join(parts)
+
+
+@dataclass(frozen=True, slots=True)
 class Obligation:
     """One machine-checked proof obligation and its result."""
 
@@ -159,6 +211,9 @@ class Obligation:
     expected: JsonValue = None
     """What policy required. JSON-safe only."""
 
+    citation: Citation | None = None
+    """The authority behind this obligation. Required for REGULATORY."""
+
     def __post_init__(self) -> None:
         if not self.id:
             raise ValueError("Obligation.id must be non-empty")
@@ -166,6 +221,11 @@ class Obligation:
             raise ValueError(f"Obligation {self.id!r} must carry a detail string")
         _assert_json_safe(self.observed, f"{self.id}.observed")
         _assert_json_safe(self.expected, f"{self.id}.expected")
+        if self.source is ObligationSource.REGULATORY and self.citation is None:
+            raise ValueError(
+                f"Obligation {self.id!r} has source REGULATORY but no citation. "
+                "A regulatory rejection must name the provision it rests on."
+            )
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {
@@ -175,6 +235,7 @@ class Obligation:
             "detail": self.detail,
             "observed": self.observed,
             "expected": self.expected,
+            "citation": self.citation.to_dict() if self.citation else None,
         }
 
 

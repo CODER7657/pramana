@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 import pytest
 
 from pramana.kernel.verdict import (
+    Citation,
     Decision,
     Obligation,
     ObligationSource,
@@ -32,13 +33,27 @@ TRACE = "4bf92f3577b34da6a3ce929d0e0e4736"
 REF = hashlib.sha256(b"closed-mandate-jwt").hexdigest()
 POLICY = "test-policy@1"
 
+TEST_CITATION = Citation(
+    authority="RBI",
+    reference="Digital Payments - E-mandate Framework, 2026",
+    clause="test clause",
+    effective_from="2026-04-21",
+)
+
+
 
 def _ob(
     status: ObligationStatus,
     ident: str = "test.check",
     source: ObligationSource = ObligationSource.MANDATE,
 ) -> Obligation:
-    return Obligation(id=ident, status=status, source=source, detail="test detail")
+    return Obligation(
+        id=ident,
+        status=status,
+        source=source,
+        detail="test detail",
+        citation=TEST_CITATION if source is ObligationSource.REGULATORY else None,
+    )
 
 
 def _verdict(
@@ -427,3 +442,100 @@ class TestBlockingReport:
             _ob(ObligationStatus.VIOLATED, "r", ObligationSource.REGULATORY),
         )
         assert v.blocking[0].source is ObligationSource.REGULATORY
+
+
+# ---------------------------------------------------------------------------
+# Citation -- what makes a verdict a compliance artifact rather than a score
+# ---------------------------------------------------------------------------
+
+
+class TestCitation:
+    def test_regulatory_obligation_requires_a_citation(self) -> None:
+        """You cannot claim a rule rejected a payment without naming the rule."""
+        with pytest.raises(ValueError, match="REGULATORY but no citation"):
+            Obligation(
+                id="rbi.afa_threshold",
+                status=ObligationStatus.VIOLATED,
+                source=ObligationSource.REGULATORY,
+                detail="AFA required",
+            )
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            ObligationSource.MANDATE,
+            ObligationSource.MERCHANT,
+            ObligationSource.PROTOCOL,
+            ObligationSource.RISK,
+        ],
+    )
+    def test_non_regulatory_sources_do_not_require_one(
+        self, source: ObligationSource
+    ) -> None:
+        assert (
+            Obligation(
+                id="x.y",
+                status=ObligationStatus.SATISFIED,
+                source=source,
+                detail="d",
+            ).citation
+            is None
+        )
+
+    def test_citation_requires_authority_and_reference(self) -> None:
+        with pytest.raises(ValueError, match="authority"):
+            Citation(authority="", reference="r")
+        with pytest.raises(ValueError, match="reference"):
+            Citation(authority="RBI", reference="")
+
+    def test_render_is_human_readable(self) -> None:
+        assert (
+            Citation(
+                authority="RBI", reference="E-mandate Framework, 2026", clause="AFA"
+            ).render()
+            == "RBI / E-mandate Framework, 2026 / AFA"
+        )
+
+    def test_render_without_a_clause(self) -> None:
+        assert Citation(authority="AP2", reference="v0.2").render() == "AP2 / v0.2"
+
+    def test_citation_is_serialised_into_the_verdict(self) -> None:
+        v = _verdict(
+            _ob(ObligationStatus.SATISFIED, "ok"),
+            _ob(ObligationStatus.VIOLATED, "rbi.x", ObligationSource.REGULATORY),
+        )
+        payload = v.to_dict()
+        cited = [o for o in payload["obligations"] if o["id"] == "rbi.x"]  # type: ignore[index,union-attr]
+        assert cited[0]["citation"]["authority"] == "RBI"  # type: ignore[index]
+
+    def test_citation_changes_the_content_hash(self) -> None:
+        """A verdict citing a different provision is a different record."""
+        base = Obligation(
+            id="rbi.x",
+            status=ObligationStatus.VIOLATED,
+            source=ObligationSource.REGULATORY,
+            detail="d",
+            citation=Citation(authority="RBI", reference="A"),
+        )
+        other = Obligation(
+            id="rbi.x",
+            status=ObligationStatus.VIOLATED,
+            source=ObligationSource.REGULATORY,
+            detail="d",
+            citation=Citation(authority="RBI", reference="B"),
+        )
+        common = {
+            "policy_version": POLICY,
+            "declared_obligations": ("ok", "rbi.x"),
+            "trace_id": TRACE,
+            "mandate_ref": REF,
+            "evaluated_at": datetime(2026, 8, 23, tzinfo=UTC),
+        }
+        a = build_verdict([_ob(ObligationStatus.SATISFIED, "ok"), base], **common)  # type: ignore[arg-type]
+        b = build_verdict([_ob(ObligationStatus.SATISFIED, "ok"), other], **common)  # type: ignore[arg-type]
+        assert a.content_hash() != b.content_hash()
+
+    def test_citation_is_frozen(self) -> None:
+        c = Citation(authority="RBI", reference="r")
+        with pytest.raises((AttributeError, TypeError)):
+            c.authority = "tampered"  # type: ignore[misc]

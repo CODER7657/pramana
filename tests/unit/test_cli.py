@@ -137,7 +137,8 @@ class TestParser:
         assert exc.value.code == 0
 
     @pytest.mark.parametrize(
-        "cmd", ["demo", "verify", "explain", "inject", "dispute"]
+        "cmd",
+        ["demo", "verify", "explain", "inject", "dispute", "providers", "replay"],
     )
     def test_all_subcommands_registered(self, cmd: str) -> None:
         args = build_parser().parse_args([cmd])
@@ -192,3 +193,64 @@ class TestDispute:
         assert out.count("record hash:") == 3
         assert out.count("- record hash:") == 2
         assert out.count("verdict hash:") == 2
+
+
+class TestProviders:
+    def test_reports_no_keys_without_leaking_anything(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["providers"]) == 0
+        out = capsys.readouterr().out
+        assert "cerebras" in out and "groq" in out and "nvidia-nim" in out
+        assert "no key" in out
+        assert "CEREBRAS_API_KEY" in out
+
+    def test_never_prints_a_key_value(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setenv("GROQ_API_KEY", "gsk_super_secret_value")
+        main(["providers"])
+        out = capsys.readouterr().out
+        assert "gsk_super_secret_value" not in out
+        assert "ready" in out
+
+    def test_nvidia_licence_caveat_is_visible(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        main(["providers"])
+        assert "DEV/TEST ONLY" in capsys.readouterr().out
+
+
+class TestReplay:
+    def test_verdicts_reproduce_byte_identically(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["replay"]) == 0
+        out = capsys.readouterr().out
+        assert "2/2 verdicts reproduced byte-identically" in out
+        assert out.count("identical               : True") == 2
+
+    def test_output_is_ascii(self, capsys: pytest.CaptureFixture[str]) -> None:
+        main(["replay"])
+        assert capsys.readouterr().out.encode("ascii", errors="strict")
+
+
+class TestCitationsInOutput:
+    def test_demo_names_the_regulation(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A regulatory decision must be traceable to its provision."""
+        main(["demo"])
+        out = capsys.readouterr().out
+        assert "per RBI / Digital Payments - E-mandate Framework, 2026" in out
+
+    def test_verify_json_carries_the_citation(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        main(["verify"])
+        payload = json.loads(capsys.readouterr().out)
+        cited = [
+            o for o in payload["obligations"] if o["id"] == "rbi.afa_threshold"
+        ]
+        assert cited[0]["citation"]["authority"] == "RBI"
+        assert cited[0]["citation"]["effective_from"] == "2026-04-21"

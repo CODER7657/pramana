@@ -26,6 +26,7 @@ from pramana.ai.triage import (
     template_summary,
 )
 from pramana.kernel.verdict import (
+    Citation,
     Obligation,
     ObligationSource,
     ObligationStatus,
@@ -34,6 +35,14 @@ from pramana.kernel.verdict import (
 )
 
 REF = hashlib.sha256(b"m").hexdigest()
+
+TEST_CITATION = Citation(
+    authority="RBI",
+    reference="Digital Payments - E-mandate Framework, 2026",
+    clause="test clause",
+    effective_from="2026-04-21",
+)
+
 P = ProviderConfig(
     name="p", base_url="https://p.test/v1", model="m", api_key_env="P_KEY"
 )
@@ -59,7 +68,13 @@ def make(
 ) -> Verdict:
     obligations = [ok_ob()]
     obligations += [
-        Obligation(id=i, status=s, source=src, detail=f"{i} failed")
+        Obligation(
+            id=i,
+            status=s,
+            source=src,
+            detail=f"{i} failed",
+            citation=TEST_CITATION if src is ObligationSource.REGULATORY else None,
+        )
         for i, s, src in failures
     ]
     ids = tuple(o.id for o in obligations)

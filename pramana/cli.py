@@ -16,8 +16,14 @@ from pramana import __version__
 from pramana.ai.dispute import DisputeDrafter
 from pramana.ai.explainer import VerdictExplainer
 from pramana.ai.provider import Mode, build_chain
-from pramana.kernel.ledger.chain_log import EvidenceLedger, MemoryStore
+from pramana.config import load_dotenv, provider_status
+from pramana.kernel.ledger.chain_log import (
+    EvidenceLedger,
+    MemoryStore,
+    _verdict_hash_of,
+)
 from pramana.kernel.verdict import (
+    Citation,
     Obligation,
     ObligationSource,
     ObligationStatus,
@@ -30,6 +36,23 @@ _DEMO_REF = hashlib.sha256(b"demo-closed-mandate-jwt").hexdigest()
 _POLICY = "demo-policy@1"
 _PAYLOAD_PREVIEW = 60
 
+# The actual instrument, notified 21 April 2026. A regulatory rejection that
+# cannot name its provision is not a compliance artifact.
+_RBI_EMANDATE = Citation(
+    authority="RBI",
+    reference="Digital Payments - E-mandate Framework, 2026",
+    clause="AFA exemption ceiling for recurring transactions",
+    effective_from="2026-04-21",
+    url="https://www.rbi.org.in",
+)
+_RBI_CATEGORY = Citation(
+    authority="RBI",
+    reference="Digital Payments - E-mandate Framework, 2026",
+    clause="Enhanced ceiling for insurance, mutual funds and card bills",
+    effective_from="2026-04-21",
+    url="https://www.rbi.org.in",
+)
+
 
 def _ob(
     ident: str,
@@ -39,6 +62,7 @@ def _ob(
     *,
     observed: object = None,
     expected: object = None,
+    citation: Citation | None = None,
 ) -> Obligation:
     return Obligation(
         id=ident,
@@ -47,6 +71,7 @@ def _ob(
         detail=detail,
         observed=observed,  # type: ignore[arg-type]
         expected=expected,  # type: ignore[arg-type]
+        citation=citation,
     )
 
 
@@ -66,6 +91,8 @@ def _render(title: str, verdict: Verdict) -> None:
             ObligationStatus.NOT_APPLICABLE: "  --  ",
         }[o.status]
         print(f"  [{mark}] {o.id:<34} ({o.source})")
+        if o.citation:
+            print(f"           per {o.citation.render()}")
         if o.status.is_blocking:
             print(f"           {o.detail}")
 
@@ -95,12 +122,14 @@ def _legitimate() -> Verdict:
                 "Below the AFA-free ceiling for this category.",
                 observed={"amount_paise": 250_000},
                 expected={"ceiling_paise": 1_500_000},
+                citation=_RBI_EMANDATE,
             ),
             _ob(
                 "rbi.insurance_category_limit",
                 ObligationStatus.NOT_APPLICABLE,
                 ObligationSource.REGULATORY,
                 "Transaction is not in a specified category.",
+                citation=_RBI_CATEGORY,
             ),
         ],
         policy_version=_POLICY,
@@ -135,6 +164,7 @@ def _withheld_constraint() -> Verdict:
                 ObligationStatus.SATISFIED,
                 ObligationSource.REGULATORY,
                 "Below the AFA-free ceiling for this category.",
+                citation=_RBI_EMANDATE,
             ),
         ],
         policy_version=_POLICY,
@@ -251,6 +281,72 @@ def cmd_inject(args: argparse.Namespace) -> int:
     return 0 if unchanged else 1
 
 
+def cmd_replay(_: argparse.Namespace) -> int:
+    """Recompute stored verdicts and prove the hashes reproduce exactly.
+
+    A probabilistic scorer cannot do this. Its weights move -- Vulcan is
+    described as improving with every transaction -- so a decision from eight
+    months ago is not reproducible even in principle. A JCS-canonical verdict
+    is, forever, by anyone, in any language.
+    """
+    ledger = EvidenceLedger(MemoryStore())
+    ledger.append(_legitimate())
+    ledger.append(_withheld_constraint())
+
+    print("=" * 68)
+    print("DETERMINISTIC REPLAY")
+    print("=" * 68)
+
+    records = ledger.records()
+    reproduced = 0
+    for record in records:
+        recomputed = _verdict_hash_of(record.verdict)
+        matches = recomputed == record.verdict_hash
+        reproduced += int(bool(matches))
+        print()
+        print(f"  record {record.sequence} ({record.decision})")
+        print(f"    stored verdict hash     : {record.verdict_hash}")
+        print(f"    recomputed from the body: {recomputed}")
+        print(f"    identical               : {matches}")
+
+    chain_ok = ledger.verify()
+    print()
+    print(f"  {reproduced}/{len(records)} verdicts reproduced byte-identically")
+    print(f"  {chain_ok} record(s) verified in the chain")
+    print()
+    print("  Recomputation is SHA-256 over the RFC 8785 canonical form. Any")
+    print("  third party can perform it without this codebase, years later,")
+    print("  and get the same digest. That is what makes a verdict evidence")
+    print("  rather than an opinion.")
+    print()
+    return 0 if reproduced == len(records) else 1
+
+
+def cmd_providers(_: argparse.Namespace) -> int:
+    """Report which inference providers have a credential present.
+
+    Never prints a key, only whether one is set.
+    """
+    statuses = provider_status()
+    print("=" * 68)
+    print("INFERENCE PROVIDERS (fallback order)")
+    print("=" * 68)
+    for i, s in enumerate(statuses, 1):
+        print(f"  {i}. {s.name:<12} [{s.marker:^6}]  {s.env_var}")
+        print(f"     model: {s.model}")
+        print(f"     {s.notes}")
+    ready = [s for s in statuses if s.configured]
+    print()
+    if ready:
+        print(f"  {len(ready)} of {len(statuses)} configured. "
+              f"Primary: {ready[0].name}")
+    else:
+        print("  No providers configured. Everything still works -- the AI layer")
+        print("  degrades to deterministic templates. Copy .env.example to .env")
+        print("  and add a key to get generated prose instead.")
+    return 0
+
+
 def cmd_dispute(args: argparse.Namespace) -> int:
     """Build a dispute evidence pack over a hash-chained ledger.
 
@@ -330,10 +426,23 @@ def build_parser() -> argparse.ArgumentParser:
     dispute.add_argument("--offline", action="store_true")
     dispute.add_argument("--no-ai", action="store_true")
     dispute.set_defaults(func=cmd_dispute)
+
+    providers = sub.add_parser(
+        "providers", help="show which inference providers are configured"
+    )
+    providers.set_defaults(func=cmd_providers)
+
+    replay = sub.add_parser(
+        "replay", help="recompute stored verdicts and prove they reproduce"
+    )
+    replay.set_defaults(func=cmd_replay)
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Load .env if present. Real environment variables always win, so a CI
+    # secret is never overridden by a stale local file.
+    load_dotenv()
     args = build_parser().parse_args(argv)
     result: int = args.func(args)
     return result

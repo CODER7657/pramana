@@ -26,6 +26,7 @@ from pramana.ai.dispute import (
 from pramana.ai.provider import HttpResult, ProviderChain, ProviderConfig
 from pramana.kernel.ledger.chain_log import EvidenceLedger, MemoryStore
 from pramana.kernel.verdict import (
+    Citation,
     Obligation,
     ObligationSource,
     ObligationStatus,
@@ -36,6 +37,14 @@ from pramana.kernel.verdict import (
 TRACE = "4bf92f3577b34da6a3ce929d0e0e4736"
 MANDATE = hashlib.sha256(b"mandate-under-dispute").hexdigest()
 OTHER = hashlib.sha256(b"unrelated").hexdigest()
+
+TEST_CITATION = Citation(
+    authority="RBI",
+    reference="Digital Payments - E-mandate Framework, 2026",
+    clause="test clause",
+    effective_from="2026-04-21",
+)
+
 
 P = ProviderConfig(
     name="p", base_url="https://p.test/v1", model="m", api_key_env="P_KEY"
@@ -58,6 +67,7 @@ def ob(
         detail=detail,
         observed=observed,
         expected=expected,
+        citation=TEST_CITATION if source is ObligationSource.REGULATORY else None,
     )
 
 
