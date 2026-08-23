@@ -12,6 +12,21 @@ The substrate is **agent-native payments (AP2 / SD-JWT delegation chains)**, har
 decision, to draft a dispute pack — but never to *make* one. That boundary is enforced by
 the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-money-path.md).
 
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
+[![Tests](https://img.shields.io/badge/tests-559%20passing-brightgreen.svg)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](POSTMORTEM.md)
+
+> **We found two defects in Google's AP2 reference implementation while building
+> against it.** Google confirmed the mechanism, classified it as intended
+> behaviour, and invited a public issue — so both are now upstream at
+> [AP2#339](https://github.com/google-agentic-commerce/AP2/issues/339) and
+> [AP2#340](https://github.com/google-agentic-commerce/AP2/pull/340).
+>
+> A verifier that reads an empty violation list as compliance will keep
+> authorising uncapped payments, and no upstream fix is coming. That is what
+> this project is for.
+
 > **Defence only.** PRAMANA is a verification and policy layer. Its attack cases are a
 > fixed, closed regression suite that runs exclusively against its own local sandbox. It
 > contains nothing that generates novel attacks and nothing that targets a third-party
@@ -167,6 +182,8 @@ Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 386 test
 | Central kernel + W3C trace context | **Built**, 30 tests |
 | Frozen attack benchmark (RC-1..RC-6) | **Built**, 29 tests |
 | FastAPI gate (fail-closed status codes) | **Built**, 30 tests |
+
+Every defect found during the build is recorded in [POSTMORTEM.md](POSTMORTEM.md) — fifteen of them, with measured latency, cost per decision, and what we would fix next.
 
 Nothing above is claimed as working that is not. Where a number appears in this README, it
 was measured; where a design is described but unbuilt, it says so.
