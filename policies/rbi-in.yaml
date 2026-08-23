@@ -1,0 +1,151 @@
+# PRAMANA policy -- India, RBI e-mandate envelope.
+#
+# Every threshold below is sourced to the Reserve Bank of India's
+# "Digital Payments - E-mandate Framework, 2026", notified 21 April 2026,
+# which consolidated the earlier e-mandate circulars.
+#
+# Amounts are in PAISE (minor units) throughout, because AP2's Amount.amount is
+# in minor units. This is deliberate and load-bearing: AP2's own Budget.max is
+# in MAJOR units while its AmountRange.max is in minor units, and mixing them
+# produces a spending cap 100x wrong. See the findings section of the README.
+#
+#   INR    15,000  =   1_500_000 paise
+#   INR 1,00,000   =  10_000_000 paise
+#
+# Verify these against the notification text before relying on them. A wrong
+# threshold asserted confidently is worse than no threshold at all.
+
+version: "rbi-in@1"
+jurisdiction: "IN"
+description: >-
+  Deterministic envelope for agent-initiated payments under Indian rails.
+  Protocol integrity, mandate conformance, and the RBI e-mandate framework.
+
+obligations:
+
+  # --- protocol integrity -------------------------------------------------
+  - id: chain.verified
+    source: protocol
+    description: >-
+      The AP2 delegation chain verifies: every hop's signature is valid, cnf
+      binding holds, and the presentation matches the expected audience.
+
+  - id: chain.nonce_fresh
+    source: protocol
+    description: >-
+      The presentation nonce has not been seen before. Requires state AP2
+      deliberately does not hold; without it, replay is unenforceable.
+    params:
+      window_seconds: 900
+
+  - id: chain.disclosures_pinned
+    source: protocol
+    description: >-
+      Every constraint the policy requires is actually PRESENT in the
+      presented mandate. This is the control for the withheld-constraint
+      finding: AP2 evaluates what is disclosed, so an absent cap yields no
+      violation. Absence here is INDETERMINATE, which rejects.
+    params:
+      required_constraints:
+        - payment.budget
+        - payment.allowed_payees
+
+  # --- mandate conformance ------------------------------------------------
+  - id: mandate.budget
+    source: mandate
+    description: >-
+      Cumulative spend against the user's signed cap. Requires the persisted
+      MandateContext that AP2 defines but never stores.
+
+  - id: mandate.payee_in_scope
+    source: mandate
+    description: The payee appears in the mandate's allowed-payee list.
+
+  - id: mandate.not_expired
+    source: mandate
+    description: The mandate's validity window covers the execution date.
+
+  # --- merchant policy (a mandate cannot weaken these) --------------------
+  - id: merchant.category_allowed
+    source: merchant
+    description: >-
+      The purchase category is one this merchant accepts from agents. Merchant
+      policy binds even where the mandate is permissive.
+    params:
+      blocked_categories:
+        - gambling
+        - crypto
+
+  # --- RBI e-mandate envelope ---------------------------------------------
+  - id: rbi.afa_threshold
+    source: regulatory
+    description: >-
+      Recurring transactions above INR 15,000 require Additional Factor of
+      Authentication. An agent-initiated debit above the ceiling without AFA
+      evidence is outside the framework.
+    params:
+      ceiling_paise: 1500000
+    citation:
+      authority: RBI
+      reference: "Digital Payments - E-mandate Framework, 2026"
+      clause: "AFA exemption ceiling for recurring transactions"
+      effective_from: "2026-04-21"
+      url: "https://www.rbi.org.in"
+
+  - id: rbi.category_ceiling
+    source: regulatory
+    description: >-
+      Specified categories carry an enhanced AFA-free ceiling of INR 1,00,000:
+      insurance premiums, mutual fund subscriptions, and credit card bill
+      payments. Outside those categories the standard ceiling applies.
+    params:
+      enhanced_ceiling_paise: 10000000
+      enhanced_categories:
+        - insurance
+        - mutual_fund
+        - credit_card_bill
+    citation:
+      authority: RBI
+      reference: "Digital Payments - E-mandate Framework, 2026"
+      clause: "Enhanced ceiling for specified categories"
+      effective_from: "2026-04-21"
+      url: "https://www.rbi.org.in"
+
+  - id: rbi.pre_debit_notice
+    source: regulatory
+    description: >-
+      The customer must receive a pre-transaction notification at least 24
+      hours before the debit, with an opt-out path.
+    params:
+      minimum_notice_hours: 24
+    citation:
+      authority: RBI
+      reference: "Digital Payments - E-mandate Framework, 2026"
+      clause: "Pre-transaction notification requirement"
+      effective_from: "2026-04-21"
+      url: "https://www.rbi.org.in"
+
+  - id: rbi.mandate_registered_with_afa
+    source: regulatory
+    description: >-
+      Registration, modification and withdrawal of an e-mandate each require
+      AFA. A mandate presented without evidence of AFA at registration is not
+      a valid basis for an agent-initiated debit.
+    citation:
+      authority: RBI
+      reference: "Digital Payments - E-mandate Framework, 2026"
+      clause: "AFA on registration, modification and withdrawal"
+      effective_from: "2026-04-21"
+      url: "https://www.rbi.org.in"
+
+  - id: rbi.validity_window
+    source: regulatory
+    description: >-
+      The e-mandate carries a specified validity period the customer can
+      modify or withdraw. A debit outside that window is unauthorised.
+    citation:
+      authority: RBI
+      reference: "Digital Payments - E-mandate Framework, 2026"
+      clause: "Specified validity period"
+      effective_from: "2026-04-21"
+      url: "https://www.rbi.org.in"
