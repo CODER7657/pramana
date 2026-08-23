@@ -25,6 +25,9 @@ venv/
 coverage.xml
 htmlcov/
 
+# Cached LLM responses. Useful locally for offline demos; not repo content.
+.cache/
+
 # Local state -- the ledger and nonce store are runtime artifacts
 *.sqlite
 *.sqlite3
