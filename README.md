@@ -53,6 +53,39 @@ verifier. That distinction is what PRAMANA adds.
 
 ---
 
+## The HTTP gate
+
+```bash
+uvicorn pramana.gateway.app:create_app --factory
+```
+
+```
+POST /v1/evaluate  ->  HTTP 403   decision: reject
+                       blocking:  ['rbi.afa_threshold']
+                       x-pramana-elapsed-ms: 1.274
+```
+
+**Status codes fail closed.** `200` allow, `403` reject with the full verdict in
+the body, `400`/`500` for a request that reached no decision — and those carry no
+`decision` field at all, so there is nothing for a careless caller to misread.
+
+Returning `200` with `decision: reject` would be more RESTful — the evaluation
+*did* succeed, the payment merely wasn't authorised. It would also make the lazy
+integration (`if response.ok:`) fail **open**, which is the one failure mode this
+project exists to prevent. Correct REST semantics are not worth an unauthorised
+payment.
+
+The gate holds **no decision logic**. It converts wire types to a
+`PaymentRequest`, calls `Kernel.evaluate`, and converts back — so the API, the
+CLI and the benchmark cannot disagree about what is authorised. A test asserts
+the API and the kernel produce identical verdicts for the same input.
+
+`GET /v1/policy` is public on purpose: a merchant subject to this gate is
+entitled to read the rules it is held to, including the provision behind every
+regulatory one.
+
+---
+
 ## Quickstart
 
 ```bash
@@ -130,9 +163,9 @@ Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 386 test
 | Buying agent (the governed party) | **Built**, 42 tests |
 | Policy engine (versioned, cited YAML) | **Built**, 56 tests |
 | RBI envelope predicates | **Built**, sourced to the 2026 notification |
-| FastAPI gate | Not started |
 | Central kernel + W3C trace context | **Built**, 30 tests |
 | Frozen attack benchmark (RC-1..RC-6) | **Built**, 29 tests |
+| FastAPI gate (fail-closed status codes) | **Built**, 30 tests |
 
 Nothing above is claimed as working that is not. Where a number appears in this README, it
 was measured; where a design is described but unbuilt, it says so.
