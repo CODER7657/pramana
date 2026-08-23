@@ -140,6 +140,14 @@ class ProviderConfig:
     max_context_tokens: int | None = None
     """Free-tier ceiling, where the provider imposes one. Cerebras is 8K."""
 
+    reasoning_overhead_tokens: int = 0
+    """Extra completion budget for reasoning models.
+
+    ``gpt-oss-120b`` emits chain-of-thought into a separate ``reasoning`` field
+    that is billed against ``max_tokens``. A 16-token budget was consumed
+    entirely by reasoning and returned an empty ``content``. We add this on top
+    of the caller's request so a small prose budget is not silently starved."""
+
     notes: str = ""
 
     def api_key(self) -> str | None:
@@ -154,17 +162,19 @@ class ProviderConfig:
 CEREBRAS = ProviderConfig(
     name="cerebras",
     base_url="https://api.cerebras.ai/v1",
-    model="llama-3.3-70b",
+    model="gpt-oss-120b",
     api_key_env="CEREBRAS_API_KEY",
     max_context_tokens=8192,
-    notes="1M tokens/day, 14.4k req/day/model, 8K context on free tier",
+    reasoning_overhead_tokens=768,
+    notes="1M tokens/day, 14.4k req/day/model, 8K context. Verified 2026-08-23.",
 )
 GROQ = ProviderConfig(
     name="groq",
     base_url="https://api.groq.com/openai/v1",
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     api_key_env="GROQ_API_KEY",
-    notes="~30 RPM / 1000 RPD free tier; fastest first-token latency",
+    reasoning_overhead_tokens=768,
+    notes="~30 RPM / 1000 RPD free tier; fastest first token. Verified 2026-08-23.",
 )
 NVIDIA_NIM = ProviderConfig(
     name="nvidia-nim",
@@ -374,7 +384,10 @@ class ProviderChain:
         payload: dict[str, Any] = {
             "model": config.model,
             "messages": messages,
-            "max_tokens": min(key.max_tokens, config.max_tokens),
+            "max_tokens": (
+                min(key.max_tokens, config.max_tokens)
+                + config.reasoning_overhead_tokens
+            ),
             "temperature": key.temperature,
         }
         headers = {
@@ -426,6 +439,13 @@ class ProviderChain:
                 config.name, f"unparseable response shape: {exc}"
             ) from exc
         if not isinstance(text, str) or not text.strip():
+            message = choices[0].get("message", {}) if choices else {}
+            if message.get("reasoning"):
+                raise ProviderUnavailableError(
+                    config.name,
+                    "empty completion: the reasoning field consumed the whole "
+                    "token budget. Raise max_tokens or reasoning_overhead_tokens.",
+                )
             raise ProviderUnavailableError(config.name, "empty completion")
 
         usage = result.body.get("usage") or {}

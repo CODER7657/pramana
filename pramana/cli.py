@@ -17,6 +17,7 @@ from pramana.ai.dispute import DisputeDrafter
 from pramana.ai.explainer import VerdictExplainer
 from pramana.ai.provider import Mode, build_chain
 from pramana.config import load_dotenv, provider_status
+from pramana.console import configure_stdout, console_safe
 from pramana.kernel.ledger.chain_log import (
     EvidenceLedger,
     MemoryStore,
@@ -204,7 +205,7 @@ def cmd_explain(args: argparse.Namespace) -> int:
     print("\n" + "=" * 68)
     print("EXPLANATION")
     print("=" * 68)
-    print(explanation.text)
+    print(console_safe(explanation.text))
     origin = (
         f"{explanation.provider}/{explanation.model}"
         + (" (cached)" if explanation.cached else "")
@@ -265,7 +266,7 @@ def cmd_inject(args: argparse.Namespace) -> int:
         if explanation.is_llm
         else "no provider reachable -- deterministic template said"
     )
-    print(f"\n  {speaker}: {explanation.text[:160]}")
+    print(console_safe(f"\n  {speaker}: {explanation.text[:160]}"))
     print(f"\n  after    : {str(verdict.decision).upper()}  "
           f"{verdict.content_hash()[:16]}...")
 
@@ -364,7 +365,7 @@ def cmd_dispute(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(pack.to_dict(), indent=2))
     else:
-        print(pack.to_markdown())
+        print(console_safe(pack.to_markdown()))
 
     verified = ledger.verify()
     print(
@@ -442,6 +443,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     # Load .env if present. Real environment variables always win, so a CI
     # secret is never overridden by a stale local file.
+    configure_stdout()
     load_dotenv()
     args = build_parser().parse_args(argv)
     result: int = args.func(args)
