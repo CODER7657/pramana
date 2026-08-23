@@ -323,6 +323,19 @@ def cmd_replay(_: argparse.Namespace) -> int:
     return 0 if reproduced == len(records) else 1
 
 
+def cmd_bench(args: argparse.Namespace) -> int:
+    """Run the frozen attack benchmark and print before/after."""
+    from bench.runner import run  # noqa: PLC0415 -- bench is not a runtime dep
+
+    report = run()
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        print(console_safe(report.render()))
+    # Non-zero if any structural attack still succeeds.
+    return 0 if report.asr(pramana=True) == 0.0 else 1
+
+
 def cmd_providers(_: argparse.Namespace) -> int:
     """Report which inference providers have a credential present.
 
@@ -437,6 +450,10 @@ def build_parser() -> argparse.ArgumentParser:
         "replay", help="recompute stored verdicts and prove they reproduce"
     )
     replay.set_defaults(func=cmd_replay)
+
+    bench = sub.add_parser("bench", help="run the frozen attack benchmark")
+    bench.add_argument("--json", action="store_true", help="emit JSON not a table")
+    bench.set_defaults(func=cmd_bench)
     return parser
 
 

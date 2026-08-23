@@ -129,10 +129,11 @@ Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 386 test
 | Advisory risk signals - Vulcan integration contract | **Built**, 69 tests |
 | Exception triage | **Built**, 35 tests |
 | Buying agent (the governed party) | **Built**, 42 tests |
-| Policy engine + predicate framework | Not started |
-| RBI envelope predicates | Not started |
+| Policy engine (versioned, cited YAML) | **Built**, 56 tests |
+| RBI envelope predicates | **Built**, sourced to the 2026 notification |
 | FastAPI gate | Not started |
-| Attack benchmark (RC-1..RC-5) | Not started |
+| Central kernel + W3C trace context | **Built**, 30 tests |
+| Frozen attack benchmark (RC-1..RC-6) | **Built**, 29 tests |
 
 Nothing above is claimed as working that is not. Where a number appears in this README, it
 was measured; where a design is described but unbuilt, it says so.
@@ -169,6 +170,51 @@ entirely, so a rehearsed demo runs with the cable pulled.
 
 Authorisation **fails closed**; explanation **fails open**. Neither trades away the
 other's property.
+
+---
+
+## The number
+
+```bash
+pramana bench
+```
+
+```
+  ATTACK-SUCCESS RATE (structural classes only; lower is better)
+    baseline (presence-driven) : 58.3%  (7/12 attacks allowed)
+    PRAMANA                    :  0.0%  (0/12 attacks allowed)
+
+  FALSE-POSITIVE RATE (legitimate traffic wrongly rejected)
+    baseline : 0.0% (0/6)
+    PRAMANA  : 0.0% (0/6)
+
+  BY ROOT-CAUSE CLASS  (attacks allowed / total)
+    class       before      after   definition
+    RC-1           0/1        0/1   Registry/marketplace content accepted with
+    RC-2           1/2        0/2   Payment destination taken from untrusted s
+    RC-3           1/1        0/1   Authentication credential transmitted via
+    RC-4           2/2        0/2   Non-atomic check-then-execute in payment s
+    RC-5           3/6        0/6   Authentication exists but authorization sc
+
+  LATENCY (whole decision, including the ledger write)
+    p50 0.27ms   p95 1.30ms   p99 1.30ms
+```
+
+Classes follow the taxonomy in Louck, [arXiv:2607.21824](https://arxiv.org/abs/2607.21824)
+— RC-1..RC-5 structural, RC-6 semantic. **RC-3 is the class the published defence
+(PCAT) reduces only to warn-only.**
+
+**Read the limitation before quoting the number.** We wrote these cases and we
+wrote the gate; 0% ASR against a suite authored by the defence's own authors is a
+consistency check, not an independent result. `pramana bench` prints that caveat
+every time, and a test asserts it cannot be dropped.
+
+What the comparison *does* support: the baseline column is not invented.
+Presence-driven evaluation is the measured behaviour of the AP2 reference
+implementation at `e1ea56db`, reproduced end-to-end in
+[`scripts/spike_chain_e2e.py`](scripts/spike_chain_e2e.py). What it does *not*
+support: any claim about AIP-Bench, whose artifacts release 2026-10-04 and which
+we have not run.
 
 ---
 
