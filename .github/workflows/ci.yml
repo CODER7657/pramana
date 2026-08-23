@@ -64,15 +64,11 @@ jobs:
       - name: Ruff
         run: ruff check .
 
-      - name: Ruff format check
-        run: ruff format --check .
-        continue-on-error: true
-
       - name: mypy (strict)
-        run: mypy pramana
+        run: mypy pramana bench
 
       - name: Tests
-        run: pytest -q --cov=pramana --cov-report=term-missing
+        run: pytest -q --cov=pramana --cov=bench --cov-report=term-missing --cov-fail-under=90
 
       - name: CLI runs on a fresh install
         # The README promises a working demo from a clean clone. Prove it.
@@ -85,6 +81,11 @@ jobs:
             exit 1
           fi
           echo "fail-closed exit code confirmed"
+
+      - name: README numbers match reality
+        # Three different test counts once appeared in one README, in the same
+        # paragraph claiming every number was measured. Now asserted.
+        run: pytest tests/unit/test_cli.py -q -k Readme
 
   invariants:
     name: Kernel safety invariants
