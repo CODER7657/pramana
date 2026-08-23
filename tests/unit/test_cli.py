@@ -137,8 +137,58 @@ class TestParser:
         assert exc.value.code == 0
 
     @pytest.mark.parametrize(
-        "cmd", ["demo", "verify", "explain", "inject"]
+        "cmd", ["demo", "verify", "explain", "inject", "dispute"]
     )
     def test_all_subcommands_registered(self, cmd: str) -> None:
         args = build_parser().parse_args([cmd])
         assert hasattr(args, "func")
+
+
+class TestDispute:
+    def test_markdown_pack_is_produced(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["dispute", "--no-ai"]) == 0
+        out = capsys.readouterr().out
+        assert "# Dispute Evidence Pack" in out
+        assert "**Chain integrity:** VERIFIED" in out
+        assert "## Verification" in out
+
+    def test_json_pack_is_valid(self, capsys: pytest.CaptureFixture[str]) -> None:
+        main(["dispute", "--no-ai", "--json"])
+        body = capsys.readouterr().out.split("\n---\n")[0]
+        pack = json.loads(body)
+        assert pack["chain_verified"] is True
+        assert pack["records_examined"] == 2
+        assert pack["narrative_source"] == "template"
+
+    def test_withheld_cap_classified_as_unverifiable_authority(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        main(["dispute", "--no-ai", "--json"])
+        body = capsys.readouterr().out.split("\n---\n")[0]
+        assert json.loads(body)["categories"] == ["unverifiable_authority"]
+
+    def test_output_is_ascii_safe_for_any_console(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A judge running this on a cp1252 console must not see mojibake."""
+        main(["dispute", "--no-ai"])
+        out = capsys.readouterr().out
+        assert out.encode("ascii", errors="strict")
+
+    def test_offline_still_produces_a_pack(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["dispute", "--offline"]) == 0
+        assert "Summary source: template" in capsys.readouterr().out
+
+    def test_hashes_appear_for_third_party_verification(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        main(["dispute", "--no-ai"])
+        out = capsys.readouterr().out
+        # "Head record hash:" also contains the substring, hence 3.
+        assert out.count("record hash:") == 3
+        assert out.count("- record hash:") == 2
+        assert out.count("verdict hash:") == 2

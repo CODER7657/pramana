@@ -115,21 +115,22 @@ in a dispute can recompute the hash from the same facts in a different language.
 
 ## Status
 
-Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 129 tests, all green.
+Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 220 tests, all green.
 
 | Component | State |
 | --- | --- |
 | Verdict kernel — invariants, JCS canonicalisation | **Built**, 45 tests |
-| CLI — `demo` / `verify` / `explain` / `inject` | **Built**, 21 tests |
+| CLI — `demo` / `verify` / `explain` / `inject` / `dispute` | **Built**, 28 tests |
 | AP2 chain verification spike | **Built**, reproduces the finding |
 | LLM provider chain — Cerebras → Groq → NVIDIA, cache, offline | **Built**, 40 tests |
 | Verdict explainer + prompt-injection boundary | **Built**, 44 tests |
+| Evidence ledger (C5) - hash-chained, tamper-evident | **Built**, 31 tests |
+| Dispute-pack drafter | **Built**, 32 tests |
 | Policy engine + predicate framework | Not started |
 | RBI envelope predicates | Not started |
-| Evidence ledger (C5) | Not started |
 | FastAPI gate | Not started |
 | Attack benchmark (RC-1..RC-5) | Not started |
-| AI layer — dispute drafter, exception triage, buying agent | Not started |
+| AI layer — exception triage, buying agent | Not started |
 
 Nothing above is claimed as working that is not. Where a number appears in this README, it
 was measured; where a design is described but unbuilt, it says so.

@@ -13,8 +13,10 @@ import sys
 from collections.abc import Sequence
 
 from pramana import __version__
+from pramana.ai.dispute import DisputeDrafter
 from pramana.ai.explainer import VerdictExplainer
 from pramana.ai.provider import Mode, build_chain
+from pramana.kernel.ledger.chain_log import EvidenceLedger, MemoryStore
 from pramana.kernel.verdict import (
     Obligation,
     ObligationSource,
@@ -249,6 +251,33 @@ def cmd_inject(args: argparse.Namespace) -> int:
     return 0 if unchanged else 1
 
 
+def cmd_dispute(args: argparse.Namespace) -> int:
+    """Build a dispute evidence pack over a hash-chained ledger.
+
+    Seeds a ledger with a legitimate payment followed by one where the
+    spending cap was withheld, then drafts the pack a merchant would file.
+    """
+    ledger = EvidenceLedger(MemoryStore())
+    ledger.append(_legitimate())
+    ledger.append(_withheld_constraint())
+
+    chain = None if args.no_ai else _explainer(args).chain
+    drafter = DisputeDrafter(ledger, chain)
+    pack = drafter.draft(_DEMO_REF)
+
+    if args.json:
+        print(json.dumps(pack.to_dict(), indent=2))
+    else:
+        print(pack.to_markdown())
+
+    verified = ledger.verify()
+    print(
+        f"\n---\nledger: {verified} record(s) verified; "
+        f"chain intact = {pack.chain_verified}"
+    )
+    return 0 if pack.chain_verified else 1
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """Emit a verdict as canonical JSON, for piping into other tools."""
     verdict = _withheld_constraint() if args.withhold else _legitimate()
@@ -293,6 +322,14 @@ def build_parser() -> argparse.ArgumentParser:
     inject.add_argument("--offline", action="store_true")
     inject.add_argument("--no-ai", action="store_true")
     inject.set_defaults(func=cmd_inject)
+
+    dispute = sub.add_parser(
+        "dispute", help="build a dispute evidence pack from the ledger"
+    )
+    dispute.add_argument("--json", action="store_true", help="emit JSON not markdown")
+    dispute.add_argument("--offline", action="store_true")
+    dispute.add_argument("--no-ai", action="store_true")
+    dispute.set_defaults(func=cmd_dispute)
     return parser
 
 
