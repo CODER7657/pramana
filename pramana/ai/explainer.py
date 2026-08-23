@@ -11,10 +11,18 @@ Three properties make that structural rather than aspirational:
   back into obligation construction, and ``Verdict.decision`` is derived from
   obligation statuses, so no string can flip it.
 
-* **The model never sees free-form attacker text.** Obligation ids, statuses,
-  and sources are enum- and policy-controlled. The only attacker-influenceable
-  fields are ``observed``/``expected``, which are constrained to JSON-safe
-  types and are serialised, escaped, and length-capped before templating.
+* **Attacker-influenceable text is bounded before it reaches the prompt.**
+  ``status`` and ``source`` are enum-constrained, so those cannot carry
+  arbitrary text. ``id`` (128 chars) and ``detail`` (1024 chars) *do* arrive
+  free-form from the wire, and ``observed``/``expected`` are attacker-shaped
+  too -- all of them are stripped of control characters, collapsed to a single
+  line, and length-capped before templating.
+
+  This does **not** carry the security property on its own, and an earlier
+  version of this docstring wrongly implied it did. The property is carried by
+  the point above: nothing converts a string into an ``ObligationStatus``, so
+  no amount of text in any field can change a decision. Sanitisation reduces
+  prompt-injection noise; it is not what makes injection harmless.
 
 * **Failure degrades, it never blocks.** If every provider is down, rate
   limited, or returns nonsense, :func:`explain` returns a deterministic

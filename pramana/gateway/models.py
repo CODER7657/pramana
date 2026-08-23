@@ -33,10 +33,14 @@ Sha256Hex = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 class ObligationIn(BaseModel):
     """A check the caller performed at the protocol or mandate layer.
 
-    The caller reports what it evaluated; it does not get to report a decision.
-    Statuses are constrained to the enum, so a caller cannot invent one, and
-    ``NOT_APPLICABLE`` is accepted but cannot on its own produce an ALLOW --
-    the kernel requires at least one ``SATISFIED``.
+    The caller reports what it evaluated. It reports the *result of an
+    obligation*, which is a meaningful trust assumption and is stated plainly
+    in the README: protocol- and mandate-layer results are supplied by the
+    merchant's own backend, not computed here.
+
+    What a caller cannot do is assert a decision. ``status`` is enum-bound, and
+    ``NOT_APPLICABLE`` cannot produce an ALLOW on its own because the kernel
+    requires a policy-declared obligation to be SATISFIED.
     """
 
     model_config = ConfigDict(extra="forbid")

@@ -73,7 +73,7 @@ cases and we wrote the gate.
 
 ## What broke
 
-Fifteen defects, grouped by how they were found. The pattern worth noting: **not
+Twenty-two defects, grouped by how they were found. The pattern worth noting: **not
 one of these came from writing more code. Every one came from running something
 against reality.**
 
@@ -163,6 +163,29 @@ Both fixed by shipping the default policy as package data resolved through
    `pisp`/`pisps` — words already appearing nine times on their `main`, surfaced
    only because the job scans changed files.
 
+### Found by a second external review (7)
+
+A second adversarial pass, after the build was "finished", found seven more.
+Every one was a place where **a document outran the code** — which is the
+dangerous failure mode for a submission positioned on checkable claims.
+
+| | Defect |
+| --- | --- |
+| Ledger | `verify()` skipped the body check when the hash could not be recomputed. Appending an out-of-domain integer made rfc8785 raise, the error was swallowed, and a rejection rewritten as an allow **passed verification**. The project's own thesis — absence of a result is not compliance — violated inside the function that detects tampering. |
+| RBI | The ₹1,00,000 enhanced ceiling was **unreachable**. `afa_threshold` applied the ₹15,000 standard ceiling to every category, and since any blocking obligation rejects, `category_ceiling` returning SATISFIED could never rescue it. Every insurance premium, SIP and card autopay between the two ceilings was wrongly refused. |
+| Gate | `evaluate()` documented that it never raises. Duplicate obligation ids escaped as a **500 on an unauthenticated endpoint**. |
+| Invariant 4 | Satisfied by bookkeeping. `evidence.recorded` was SATISFIED on every ledger append, so an all-`NOT_APPLICABLE` policy result reached ALLOW whenever the ledger was up — the hole we closed, reopened one layer down. |
+| Ledger | The **ledgered verdict was not the returned verdict**. A provisional one was written; nothing bound the evidence to the decision acted on. |
+| Coverage | Synthesised obligations hardcoded `MERCHANT`, so a missing `rbi.*` check was attributed to merchant policy with no citation — in a system where ADR-0006 makes citations mandatory for regulatory obligations. |
+| Benchmark | The baseline is a **derived configuration of the same kernel**, so for omitted-obligation cases the delta is an identity measuring the coverage invariant, not a measurement. |
+
+The RBI one is the most instructive. Our test suite had a passing test for the
+enhanced ceiling — it evaluated `category_ceiling` **in isolation**, never
+against the full regulatory set, so it never saw `afa_threshold` blocking
+alongside it. A green test asserted the opposite of the truth. The benchmark
+now carries the ₹50,000 insurance premium as a case, and that case failed when
+it was written.
+
 ### Found by our own tests, in our own tests (3)
 
 Recorded because it would be dishonest to list only the code defects.
@@ -202,11 +225,14 @@ a stronger argument than "someone might".
 
 Ordered by what we would do first, not by how impressive it sounds.
 
-1. **Tail-truncation detection in the ledger.** `verify()` catches modification,
-   deletion, reordering and broken links. It does **not** catch records removed
-   from the *end* — that leaves a shorter but internally valid chain. This is
-   asserted in a test named for the limitation rather than left implied. Fixing
-   it needs an external anchor: a countersigned head, or a published checkpoint.
+1. **Signing the ledger head.** `verify()` catches modification, deletion,
+   reordering, broken links, and — since a second review — bodies that cannot be
+   recomputed at all. It does **not** catch records removed from the *end*, which
+   leaves a shorter but internally valid chain, and it cannot prove *we* produced
+   the chain rather than someone who recomputed it wholesale. Both need the same
+   thing: an Ed25519 signature over the head hash. That turns "tamper-evident to
+   us" into "non-repudiable to a third party", and it is the one word the Vulcan
+   comparison table currently overstates.
 
 2. **The three-hop `issuer_jwt_hash` case.** We demonstrated presence-driven
    evaluation with a single hop, default `sd_hash`, and a holder-chosen
