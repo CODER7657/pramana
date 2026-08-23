@@ -38,6 +38,7 @@ from pramana.kernel.ledger.chain_log import EvidenceLedger, LedgerRecord
 from pramana.kernel.risk.signals import RiskAdapter, advisory_obligations
 from pramana.kernel.trace import SpanRecorder, TraceContext
 from pramana.kernel.verdict import (
+    Citation,
     Obligation,
     ObligationSource,
     ObligationStatus,
@@ -155,20 +156,31 @@ class Kernel:
             )
         )
 
-        ledger_obligation, record = self._record_evidence(
-            recorder, root, request, obligations
-        )
-        if ledger_obligation is not None:
-            obligations.append(ledger_obligation)
+        verdict = self._build_or_reject(obligations, root, request, started)
 
-        verdict = build_verdict(
-            obligations,
-            policy_version=self.policy.version,
-            declared_obligations=self.policy.declared_ids,
-            trace_id=root.trace_id,
-            mandate_ref=request.mandate_ref,
-            evaluated_at=started,
-        )
+        # The ledgered verdict must BE the returned verdict. Previously a
+        # *provisional* verdict was written and the returned one differed, so
+        # nothing bound the evidence record to the decision the merchant acted
+        # on -- which, for a dispute artifact, is the entire point.
+        record = self._record_evidence(recorder, root, verdict)
+
+        if self.ledger is not None and record is None:
+            # Could not evidence it. That blocks, so rebuild with the failure
+            # recorded. The returned verdict is deliberately in no ledger.
+            obligations.append(
+                Obligation(
+                    id=LEDGER_OBLIGATION_ID,
+                    status=ObligationStatus.INDETERMINATE,
+                    source=ObligationSource.MERCHANT,
+                    detail=(
+                        "The decision could not be written to the evidence "
+                        "ledger. An authorisation that cannot be evidenced is "
+                        "not granted."
+                    ),
+                    expected="evidence recorded",
+                )
+            )
+            verdict = self._build_or_reject(obligations, root, request, started)
         elapsed = (recorder.now() - started).total_seconds() * 1000.0
         return GateResult(
             verdict=verdict,
@@ -179,6 +191,64 @@ class Kernel:
         )
 
     # -- steps -------------------------------------------------------------
+
+    def _declared_meta(
+        self,
+    ) -> dict[str, tuple[ObligationSource, Citation | None]]:
+        """Authority and citation per declared id, for coverage synthesis."""
+        return {
+            spec.id: (spec.source, spec.citation) for spec in self.policy.enabled
+        }
+
+    def _build_or_reject(
+        self,
+        obligations: Sequence[Obligation],
+        root: TraceContext,
+        request: PaymentRequest,
+        started: datetime,
+    ) -> Verdict:
+        """Construct the verdict, or a REJECT explaining why it could not be.
+
+        ``evaluate`` documents that it never raises. It did: a request with
+        duplicate obligation ids reached ``build_verdict``, which correctly
+        refused to build, and the exception escaped to the caller as a 500 on
+        an unauthenticated endpoint. A verdict we cannot construct is a
+        decision we cannot justify, which is a rejection -- not a crash.
+        """
+        common = {
+            "policy_version": self.policy.version,
+            "declared_obligations": self.policy.declared_ids,
+            "trace_id": root.trace_id,
+            "mandate_ref": request.mandate_ref,
+            "evaluated_at": started,
+            "declared_meta": self._declared_meta(),
+        }
+        try:
+            return build_verdict(obligations, **common)  # type: ignore[arg-type]
+        except ValueError as exc:
+            logger.warning("verdict construction failed, rejecting: %s", exc)
+
+        # Rebuild from a sanitised set: first occurrence of each id wins, plus
+        # an explicit blocking obligation naming the malformation.
+        seen: set[str] = set()
+        sanitised: list[Obligation] = []
+        for o in obligations:
+            if o.id not in seen:
+                seen.add(o.id)
+                sanitised.append(o)
+        sanitised.append(
+            Obligation(
+                id="internal.request_wellformed",
+                status=ObligationStatus.VIOLATED,
+                source=ObligationSource.MERCHANT,
+                detail=(
+                    "The submitted obligation set could not form a valid "
+                    "verdict, so no authorisation can be justified from it."
+                ),
+                expected="a well-formed obligation set",
+            )
+        )
+        return build_verdict(sanitised, **common)  # type: ignore[arg-type]
 
     def _span(
         self,
@@ -228,31 +298,27 @@ class Kernel:
         self,
         recorder: SpanRecorder,
         parent: TraceContext,
-        request: PaymentRequest,
-        obligations: Sequence[Obligation],
-    ) -> tuple[Obligation | None, LedgerRecord | None]:
-        """Write the provisional verdict to the ledger.
+        verdict: Verdict,
+    ) -> LedgerRecord | None:
+        """Append the **final** verdict. ``None`` if it could not be written.
 
-        The verdict written here excludes the ledger obligation itself, which
-        would otherwise be self-referential. The returned obligation reports
-        whether the write succeeded, and its failure blocks: an authorisation
-        that cannot be evidenced is not one.
+        No obligation is emitted on success, for two reasons. Emitting one
+        would change the verdict being recorded, so the ledgered artifact would
+        again differ from the returned one. And a ``SATISFIED`` bookkeeping
+        obligation used to satisfy the affirmation invariant on its own, so an
+        all-``NOT_APPLICABLE`` policy result reached ``ALLOW`` whenever the
+        ledger happened to be up.
+
+        On success the record's existence is the evidence. On failure the
+        caller adds a blocking obligation and rebuilds.
         """
         if self.ledger is None:
-            return None, None
+            return None
 
         context = parent.child("ledger.append")
         started = recorder.now()
         try:
-            provisional = build_verdict(
-                obligations,
-                policy_version=self.policy.version,
-                declared_obligations=self.policy.declared_ids,
-                trace_id=parent.trace_id,
-                mandate_ref=request.mandate_ref,
-                evaluated_at=started,
-            )
-            record = self.ledger.append(provisional)
+            record = self.ledger.append(verdict)
         except Exception as exc:
             # Deliberately broad. LedgerStore is a plugin point; a third-party
             # backend may raise anything, and none of it may reach the caller
@@ -260,32 +326,7 @@ class Kernel:
             # evidence, which rejects.
             logger.warning("evidence write failed: %s", exc)
             recorder.record(context, started, "error", str(exc))
-            return (
-                Obligation(
-                    id=LEDGER_OBLIGATION_ID,
-                    status=ObligationStatus.INDETERMINATE,
-                    source=ObligationSource.MERCHANT,
-                    detail=(
-                        f"The decision could not be written to the evidence "
-                        f"ledger ({type(exc).__name__}). An authorisation that "
-                        f"cannot be evidenced is not granted."
-                    ),
-                    expected="evidence recorded",
-                ),
-                None,
-            )
+            return None
 
         recorder.record(context, started, "clear", f"sequence {record.sequence}")
-        return (
-            Obligation(
-                id=LEDGER_OBLIGATION_ID,
-                status=ObligationStatus.SATISFIED,
-                source=ObligationSource.MERCHANT,
-                detail="Decision recorded in the hash-chained evidence ledger.",
-                observed={
-                    "sequence": record.sequence,
-                    "record_hash": record.record_hash(),
-                },
-            ),
-            record,
-        )
+        return record

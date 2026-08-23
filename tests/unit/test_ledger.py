@@ -373,3 +373,54 @@ class TestRecordValidation:
         record = EvidenceLedger(MemoryStore()).append(verdict())
         with pytest.raises((AttributeError, TypeError)):
             record.decision = "allow"  # type: ignore[misc]
+
+
+class TestCannotRecomputeIsNotAPass:
+    """Review finding: verify() treated 'cannot recompute' as 'no objection'.
+
+    That is the exact sin the project exists to catch, committed inside the
+    function whose job is catching it. Both attacks below previously reported
+    the chain intact.
+    """
+
+    def _seeded(self, tmp_path: Path) -> Path:
+        path = tmp_path / "ledger.jsonl"
+        ledger = EvidenceLedger(JsonlStore(path))
+        ledger.append(verdict())
+        ledger.append(verdict(status=ObligationStatus.VIOLATED))
+        ledger.append(verdict())
+        assert ledger.verify() == 3
+        return path
+
+    def _rewrite(self, path: Path, index: int, mutate: object) -> None:
+        lines = path.read_text(encoding="utf-8").strip().split("\n")
+        row = json.loads(lines[index])
+        mutate(row)  # type: ignore[operator]
+        lines[index] = json.dumps(row, sort_keys=True)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def test_deleting_the_verdict_body_is_detected(self, tmp_path: Path) -> None:
+        path = self._seeded(tmp_path)
+        self._rewrite(path, 1, lambda r: r.pop("verdict"))
+        with pytest.raises(LedgerIntegrityError, match=r"cannot be recomputed|missing"):
+            EvidenceLedger(JsonlStore(path)).verify()
+
+    def test_uncanonicalisable_body_is_detected(self, tmp_path: Path) -> None:
+        """Append an out-of-domain integer so rfc8785 raises.
+
+        Previously: _verdict_hash_of caught the error, returned None, the check
+        was skipped, and a rejection rewritten as an allow passed verification.
+        """
+        path = self._seeded(tmp_path)
+
+        def mutate(row: dict) -> None:  # type: ignore[type-arg]
+            row["verdict"]["decision"] = "allow"
+            row["verdict"]["pad"] = 2**63
+
+        self._rewrite(path, 1, mutate)
+        with pytest.raises(LedgerIntegrityError):
+            EvidenceLedger(JsonlStore(path)).verify()
+
+    def test_a_clean_chain_still_verifies(self, tmp_path: Path) -> None:
+        """The stricter check must not reject honest records."""
+        assert EvidenceLedger(JsonlStore(self._seeded(tmp_path))).verify() == 3

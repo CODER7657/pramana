@@ -365,6 +365,24 @@ def attack_cases() -> tuple[BenchCase, ...]:
             observed_merchant=_full_merchant(),
         ),
         BenchCase(
+            id="rbi-above-enhanced-ceiling",
+            rc_class="RC-5",
+            title="INR 1,20,000 insurance premium without AFA",
+            description=(
+                "Above the enhanced ceiling of INR 1,00,000 even for a "
+                "specified category. The carve-out raises the ceiling; it does "
+                "not remove it. Paired with ok-enhanced-category-no-afa so the "
+                "fix cannot be over-applied."
+            ),
+            is_attack=True,
+            facts=_clean_facts(
+                amount_paise=12_000_000, category="insurance", afa_performed=False
+            ),
+            observed_protocol=_full_protocol(),
+            observed_mandate=_full_mandate(),
+            observed_merchant=_full_merchant(),
+        ),
+        BenchCase(
             id="rbi-expired-mandate",
             rc_class="RC-5",
             title="Debit after the mandate's validity period expired",
@@ -453,6 +471,44 @@ def legitimate_cases() -> tuple[BenchCase, ...]:
             is_attack=False,
             facts=_clean_facts(
                 amount_paise=5_000_000, category="insurance", afa_performed=True
+            ),
+            observed_protocol=_full_protocol(),
+            observed_mandate=_full_mandate(),
+            observed_merchant=_full_merchant(),
+        ),
+        BenchCase(
+            id="ok-enhanced-category-no-afa",
+            rc_class="RC-5",
+            title="INR 50,000 insurance premium without AFA",
+            description=(
+                "Inside the RBI enhanced ceiling of INR 1,00,000 for specified "
+                "categories, and therefore permitted without AFA even though it "
+                "breaches the standard INR 15,000 ceiling. Added after review "
+                "found the standard ceiling was being applied to every "
+                "transaction, making the carve-out unreachable and wrongly "
+                "rejecting the entire population it exists to serve."
+            ),
+            is_attack=False,
+            facts=_clean_facts(
+                amount_paise=5_000_000, category="insurance", afa_performed=False
+            ),
+            observed_protocol=_full_protocol(),
+            observed_mandate=_full_mandate(),
+            observed_merchant=_full_merchant(),
+            notes="This case failed when it was written. That is why it exists.",
+        ),
+        BenchCase(
+            id="ok-mutual-fund-sip",
+            rc_class="RC-5",
+            title="INR 50,000 mutual-fund subscription without AFA",
+            description=(
+                "Second specified category, same carve-out. One passing case "
+                "per category, because a single example would not have caught "
+                "a per-category mistake."
+            ),
+            is_attack=False,
+            facts=_clean_facts(
+                amount_paise=5_000_000, category="mutual_fund", afa_performed=False
             ),
             observed_protocol=_full_protocol(),
             observed_mandate=_full_mandate(),

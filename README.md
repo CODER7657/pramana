@@ -2,10 +2,22 @@
 
 **A deterministic verification gate for agent-initiated payments. No model on the money path.**
 
-PRAMANA sits between an AI buying agent and merchant checkout. It re-verifies the signed
-[AP2](https://github.com/google-agentic-commerce/AP2) authorisation chain server-side,
-enforces the RBI E-mandate envelope as executable predicates, and writes a hash-chained
-evidence record for every verdict.
+PRAMANA sits between an AI buying agent and merchant checkout. It enforces the RBI
+E-mandate envelope as executable predicates, requires that every obligation a policy
+declares actually produced a result, and writes a hash-chained evidence record for every
+verdict.
+
+**What it does not yet do:** parse an [AP2](https://github.com/google-agentic-commerce/AP2)
+presentation itself. Protocol- and mandate-layer results are *supplied by the caller* —
+the merchant's own backend — and the kernel requires them to be present rather than
+computing them. Only the five `rbi.*` predicates compute anything today. The AP2 adapter
+is the one component the benchmark simulates rather than exercises, and it is the top open
+item in [POSTMORTEM.md](POSTMORTEM.md).
+
+That distinction matters for the headline: when `pramana demo` blocks a withheld spending
+cap, it blocks because **nothing reported a result for a declared obligation** — not
+because PRAMANA inspected the disclosures and noticed. Same outcome, fails closed either
+way, but it is coverage enforcement rather than detection.
 
 The substrate is **agent-native payments (AP2 / SD-JWT delegation chains)**, hardened with
 **policy-as-code**. Language models are used throughout the system — to shop, to explain a
@@ -14,7 +26,7 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-559%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-588%20passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](POSTMORTEM.md)
 
 > **We found two defects in Google's AP2 reference implementation while building
@@ -72,7 +84,7 @@ verifier. That distinction is what PRAMANA adds.
 ## The HTTP gate
 
 ```bash
-uvicorn pramana.gateway.app:create_app --factory
+uvicorn pramana.gateway.app:default_app --factory
 ```
 
 ```
@@ -163,27 +175,28 @@ in a dispute can recompute the hash from the same facts in a different language.
 
 ## Status
 
-Honest, and updated as it changes. This is **Day 3 of a 13-day build**. 386 tests, all green.
+Honest, and updated as it changes. First build session, 2026-08-23.
+**588 tests**, all green. That number is asserted by a test, so it cannot drift.
 
 | Component | State |
 | --- | --- |
-| Verdict kernel — invariants, JCS canonicalisation | **Built**, 45 tests |
-| CLI — `demo`/`verify`/`explain`/`inject`/`dispute`/`replay`/`providers` | **Built**, 37 tests |
+| Verdict kernel — invariants, JCS canonicalisation | **Built** |
+| CLI — `demo`/`verify`/`explain`/`inject`/`dispute`/`replay`/`providers` | **Built** |
 | AP2 chain verification spike | **Built**, reproduces the finding |
-| LLM provider chain — Cerebras → Groq → NVIDIA, cache, offline | **Built**, 40 tests |
-| Verdict explainer + prompt-injection boundary | **Built**, 44 tests |
-| Evidence ledger (C5) - hash-chained, tamper-evident | **Built**, 31 tests |
-| Dispute-pack drafter | **Built**, 32 tests |
-| Advisory risk signals - Vulcan integration contract | **Built**, 69 tests |
-| Exception triage | **Built**, 35 tests |
-| Buying agent (the governed party) | **Built**, 42 tests |
-| Policy engine (versioned, cited YAML) | **Built**, 56 tests |
+| LLM provider chain — Cerebras → Groq → NVIDIA, cache, offline | **Built** |
+| Verdict explainer + prompt-injection boundary | **Built** |
+| Evidence ledger (C5) - hash-chained, tamper-evident | **Built** |
+| Dispute-pack drafter | **Built** |
+| Advisory risk signals - Vulcan integration contract | **Built** |
+| Exception triage | **Built** |
+| Buying agent (the governed party) | **Built** |
+| Policy engine (versioned, cited YAML) | **Built** |
 | RBI envelope predicates | **Built**, sourced to the 2026 notification |
-| Central kernel + W3C trace context | **Built**, 30 tests |
-| Frozen attack benchmark (RC-1..RC-6) | **Built**, 29 tests |
-| FastAPI gate (fail-closed status codes) | **Built**, 30 tests |
+| Central kernel + W3C trace context | **Built** |
+| Frozen attack benchmark (RC-1..RC-6) | **Built** |
+| FastAPI gate (fail-closed status codes) | **Built** |
 
-Every defect found during the build is recorded in [POSTMORTEM.md](POSTMORTEM.md) — fifteen of them, with measured latency, cost per decision, and what we would fix next.
+Every defect found during the build is recorded in [POSTMORTEM.md](POSTMORTEM.md) — twenty-two of them, with measured latency, cost per decision, and what we would fix next.
 
 Nothing above is claimed as working that is not. Where a number appears in this README, it
 was measured; where a design is described but unbuilt, it says so.

@@ -8,7 +8,7 @@ deliberate constraint on what this repository will ever accept.
 
 Concretely:
 
-* **The attack cases are a fixed, closed regression suite.** They live in `bench/cases/`,
+* **The attack cases are a fixed, closed regression suite.** They live in `bench/cases.py`,
   are enumerated in advance, and are never generated at runtime.
 * **They run only against this project's own local sandbox** — locally generated keys,
   locally constructed mandates. No test in this repository performs network I/O against a

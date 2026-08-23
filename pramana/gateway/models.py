@@ -16,7 +16,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from pramana.kernel.gate import GateResult
 from pramana.kernel.verdict import Obligation, ObligationSource, ObligationStatus
@@ -117,6 +123,31 @@ class EvaluateRequest(BaseModel):
     mandate_obligations: list[ObligationIn] = Field(default_factory=list)
     merchant_obligations: list[ObligationIn] = Field(default_factory=list)
     risk_context: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _no_duplicate_ids(self) -> EvaluateRequest:
+        """Duplicate obligation ids are a malformed request, not a decision.
+
+        The kernel refuses to build a verdict from them, correctly. Catching it
+        here makes it a 400 rather than a 500 on an unauthenticated endpoint.
+        """
+        seen: set[str] = set()
+        duplicates: set[str] = set()
+        for group in (
+            self.protocol_obligations,
+            self.mandate_obligations,
+            self.merchant_obligations,
+        ):
+            for o in group:
+                if o.id in seen:
+                    duplicates.add(o.id)
+                seen.add(o.id)
+        if duplicates:
+            raise ValueError(
+                f"duplicate obligation ids across the request: "
+                f"{sorted(duplicates)}"
+            )
+        return self
 
 
 class ObligationOut(BaseModel):

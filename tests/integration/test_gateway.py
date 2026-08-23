@@ -11,13 +11,15 @@ request through the API and through the kernel must produce the same verdict.
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from pramana.gateway.app import create_app
+from pramana.gateway.app import create_app, default_app
 from pramana.kernel.gate import Kernel, PaymentRequest
 from pramana.kernel.ledger.chain_log import EvidenceLedger, MemoryStore
 from pramana.kernel.risk.signals import RiskBand, RiskSignal
@@ -340,3 +342,31 @@ class TestOperational:
         spec = client().get("/openapi.json").json()
         responses = spec["paths"]["/v1/evaluate"]["post"]["responses"]
         assert "403" in responses
+
+
+class TestUvicornFactory:
+    """The README told readers to point uvicorn at create_app, which raises.
+
+    Running the server is the second thing anyone tries after `pramana demo`.
+    """
+
+    def test_default_app_takes_no_arguments(self, tmp_path: Path) -> None:
+        os.environ["PRAMANA_LEDGER"] = str(tmp_path / "ledger.jsonl")
+        try:
+            app = default_app()
+        finally:
+            os.environ.pop("PRAMANA_LEDGER", None)
+        assert app.title == "PRAMANA"
+
+    def test_create_app_still_requires_an_injected_kernel(self) -> None:
+        """Injection is deliberate: tests, bench and deployment share a path."""
+        with pytest.raises(TypeError):
+            create_app()  # type: ignore[call-arg]
+
+    def test_default_app_serves_health(self, tmp_path: Path) -> None:
+        os.environ["PRAMANA_LEDGER"] = str(tmp_path / "l.jsonl")
+        try:
+            c = TestClient(default_app())
+            assert c.get("/health").json()["policy_version"] == "rbi-in@1"
+        finally:
+            os.environ.pop("PRAMANA_LEDGER", None)

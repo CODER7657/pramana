@@ -264,6 +264,18 @@ class Verdict:
 
     evaluated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
+    declared_meta: Mapping[str, tuple[ObligationSource, Citation | None]] = field(
+        default_factory=dict
+    )
+    """Optional ``id -> (source, citation)`` for declared obligations.
+
+    Used when synthesising a missing obligation so it is attributed to the
+    authority that declared it. Without this every synthesised obligation was
+    recorded as ``MERCHANT`` with no citation -- including missing ``rbi.*``
+    checks, in a system where ADR-0006 makes a citation mandatory for
+    regulatory obligations."""
+
+
     def __post_init__(self) -> None:
         if not self.policy_version:
             raise ValueError("Verdict.policy_version is required")
@@ -298,10 +310,34 @@ class Verdict:
 
         self._enforce_coverage()
 
-        if not any(o.status is ObligationStatus.SATISFIED for o in self.obligations):
+        self._require_an_affirmation()
+
+    def _require_an_affirmation(self) -> None:
+        """An ALLOW must affirm something the policy actually asked for.
+
+        Scoped two ways, both from review findings:
+
+        * Only an ``ALLOW`` needs an affirmation. A ``REJECT`` is a refusal, not
+          permission, so it does not need to have satisfied anything -- and
+          requiring it made a malformed request crash the gate instead of
+          rejecting it.
+        * The satisfied obligation must be one the policy **declared**.
+          Otherwise bookkeeping satisfies the invariant: an all-NOT_APPLICABLE
+          policy result reached ALLOW whenever a ledger write succeeded, which
+          reopened the hole this invariant exists to close, one layer down.
+        """
+        if any(o.status.is_blocking for o in self.obligations):
+            return
+        affirmed = {
+            o.id
+            for o in self.obligations
+            if o.status is ObligationStatus.SATISFIED
+        } & self.declared_obligations
+        if not affirmed:
             raise ValueError(
-                "Verdict requires at least one SATISFIED obligation; a verdict in "
-                "which nothing was affirmatively satisfied is not an authorisation"
+                "Verdict would ALLOW without any policy-declared obligation "
+                "being SATISFIED. Nothing the policy asked for was affirmed, so "
+                "this is not an authorisation."
             )
 
     def _duplicate_ids(self) -> set[str]:
@@ -328,13 +364,16 @@ class Verdict:
             Obligation(
                 id=oid,
                 status=ObligationStatus.INDETERMINATE,
-                source=ObligationSource.MERCHANT,
+                source=self.declared_meta.get(
+                    oid, (ObligationSource.MERCHANT, None)
+                )[0],
                 detail=(
                     "Policy declared this obligation but no predicate reported a "
                     "result for it. Absence of a result is not compliance."
                 ),
                 expected="evaluated",
                 observed=None,
+                citation=self.declared_meta.get(oid, (None, None))[1],
             )
             for oid in sorted(missing)
         )
@@ -404,6 +443,7 @@ def build_verdict(
     trace_id: str,
     mandate_ref: str,
     evaluated_at: datetime | None = None,
+    declared_meta: Mapping[str, tuple[ObligationSource, Citation | None]] | None = None,
 ) -> Verdict:
     """Preferred constructor. Accepts any iterable and normalises it."""
     return Verdict(
@@ -413,4 +453,5 @@ def build_verdict(
         trace_id=trace_id,
         mandate_ref=mandate_ref,
         evaluated_at=evaluated_at or datetime.now(UTC),
+        declared_meta=dict(declared_meta or {}),
     )

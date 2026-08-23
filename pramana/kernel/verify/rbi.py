@@ -112,6 +112,24 @@ def afa_threshold(spec: ObligationSpec, facts: PaymentFacts) -> Obligation:
     :func:`category_ceiling`; this predicate applies the standard one.
     """
     ceiling = int(spec.require("ceiling_paise"))
+    deferred = {str(c) for c in spec.param("defers_to_category_ceiling", [])}
+
+    if facts.category is not None and facts.category in deferred:
+        # The enhanced ceiling for this category is applied by
+        # :func:`category_ceiling`. Applying the standard ceiling here as well
+        # made the carve-out unreachable -- any blocking obligation rejects, so
+        # a SATISFIED category_ceiling could never rescue a VIOLATED
+        # afa_threshold, and every insurance premium, mutual-fund SIP and
+        # credit-card autopay between the two ceilings was wrongly refused.
+        return _obligation(
+            spec,
+            ObligationStatus.NOT_APPLICABLE,
+            f"Category {facts.category!r} carries an enhanced ceiling; the "
+            f"standard AFA ceiling is superseded by rbi.category_ceiling.",
+            observed={"category": facts.category},
+            expected={"handled_by": "rbi.category_ceiling"},
+        )
+
     if facts.amount_paise is None:
         return _unknown(spec, "transaction amount")
 

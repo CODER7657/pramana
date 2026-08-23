@@ -32,6 +32,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any, Final
 
 from fastapi import FastAPI, Request, Response, status
@@ -212,3 +213,37 @@ def _trace_of(request: Request) -> str | None:
         return None
     parsed = TraceContext.parse(inbound)
     return parsed.trace_id if parsed else None
+
+
+def default_app() -> FastAPI:
+    """Zero-argument factory for ``uvicorn``.
+
+        uvicorn pramana.gateway.app:default_app --factory
+
+    ``create_app`` takes the kernel as a positional argument, deliberately, so
+    tests and the benchmark share one construction path. The README told
+    readers to point uvicorn at ``create_app`` directly, which raises
+    ``TypeError`` -- and running the server is the second thing anyone tries
+    after ``pramana demo``.
+
+    Configuration comes from the environment so a deployment does not need to
+    edit code:
+
+    * ``PRAMANA_POLICY``  -- path to a policy YAML (default: the shipped one)
+    * ``PRAMANA_LEDGER``  -- path to the JSONL ledger (default: ``var/ledger.jsonl``)
+    """
+    import os  # noqa: PLC0415 -- only needed on the deployment path
+
+    from pramana.kernel.ledger.chain_log import (  # noqa: PLC0415
+        EvidenceLedger,
+        JsonlStore,
+    )
+    from pramana.kernel.verify.policy import (  # noqa: PLC0415
+        builtin_policy,
+        load_policy,
+    )
+
+    policy_path = os.environ.get("PRAMANA_POLICY")
+    policy = load_policy(Path(policy_path)) if policy_path else builtin_policy()
+    ledger_path = os.environ.get("PRAMANA_LEDGER", "var/ledger.jsonl")
+    return create_app(Kernel(policy, ledger=EvidenceLedger(JsonlStore(ledger_path))))

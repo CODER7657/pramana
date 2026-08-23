@@ -374,3 +374,81 @@ class TestLatency:
     def test_whole_decision_without_a_ledger_is_fast(self, _run: int) -> None:
         result = Kernel(POLICY, ledger=None).evaluate(request())
         assert result.elapsed_ms < 25.0
+
+
+class TestNeverRaises(TestFailClosed):
+    """evaluate() documents that it never raises. It did.
+
+    A request with duplicate obligation ids reached build_verdict, which
+    correctly refused to build, and the ValueError escaped as a 500 on an
+    unauthenticated endpoint.
+    """
+
+    def test_duplicate_obligation_ids_reject_rather_than_raise(self) -> None:
+        dup = ob("same.id")
+        result = kernel().evaluate(request(protocol_results=(dup, dup)))
+        assert result.verdict.decision is Decision.REJECT
+        assert "internal.request_wellformed" in {
+            o.id for o in result.verdict.blocking
+        }
+
+    def test_an_empty_request_rejects_rather_than_raises(self) -> None:
+        result = kernel().evaluate(
+            PaymentRequest(mandate_ref=REF, facts=PaymentFacts())
+        )
+        assert result.verdict.decision is Decision.REJECT
+
+    def test_a_reject_needs_no_affirmation(self) -> None:
+        """Requiring one made a malformed request crash instead of rejecting."""
+        result = Kernel(POLICY, ledger=None).evaluate(
+            PaymentRequest(mandate_ref=REF, facts=PaymentFacts())
+        )
+        assert result.verdict.decision is Decision.REJECT
+        assert all(o.status.is_blocking for o in result.verdict.blocking)
+
+
+class TestLedgeredVerdictIsTheReturnedVerdict:
+    """Nothing bound the evidence record to the decision acted on."""
+
+    def test_hashes_match(self) -> None:
+        ledger = EvidenceLedger(MemoryStore())
+        result = Kernel(POLICY, ledger=ledger).evaluate(request())
+        assert result.record is not None
+        assert result.record.verdict_hash == result.verdict.content_hash()
+
+    def test_holds_for_a_rejection_too(self) -> None:
+        ledger = EvidenceLedger(MemoryStore())
+        result = Kernel(POLICY, ledger=ledger).evaluate(
+            request(facts=good_facts(amount_paise=2_000_000))
+        )
+        assert result.verdict.decision is Decision.REJECT
+        assert result.record is not None
+        assert result.record.verdict_hash == result.verdict.content_hash()
+
+    def test_no_bookkeeping_obligation_on_success(self) -> None:
+        """Emitting one would change the verdict being recorded, and a
+        SATISFIED bookkeeping entry used to satisfy the affirmation invariant
+        by itself."""
+        result = kernel().evaluate(request())
+        assert LEDGER_OBLIGATION_ID not in {o.id for o in result.verdict.obligations}
+
+    def test_a_failed_write_still_blocks_and_is_unledgered(self) -> None:
+        store: LedgerStore = BoomStore()  # type: ignore[assignment]
+        result = Kernel(POLICY, ledger=EvidenceLedger(store)).evaluate(request())
+        assert result.verdict.decision is Decision.REJECT
+        assert LEDGER_OBLIGATION_ID in {o.id for o in result.verdict.blocking}
+        assert result.record is None
+
+
+class TestSynthesisAttribution:
+    def test_a_missing_regulatory_check_keeps_its_citation(self) -> None:
+        """Synthesised obligations were recorded as MERCHANT with no citation,
+        including missing rbi.* checks, in a system where ADR-0006 makes a
+        citation mandatory for regulatory ones."""
+        result = kernel().evaluate(request(facts=PaymentFacts()))
+        synth = next(
+            o for o in result.verdict.obligations if o.id == "rbi.pre_debit_notice"
+        )
+        assert synth.source is ObligationSource.REGULATORY
+        assert synth.citation is not None
+        assert synth.citation.authority == "RBI"

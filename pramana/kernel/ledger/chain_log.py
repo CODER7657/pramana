@@ -267,7 +267,20 @@ class EvidenceLedger:
                     "record's hash",
                 )
             recomputed = _verdict_hash_of(record.verdict)
-            if recomputed is not None and recomputed != record.verdict_hash:
+            if recomputed is None:
+                # Previously this was skipped, which made the tamper detector
+                # commit the exact sin the project exists to catch: treating
+                # "could not evaluate" as "no objection". Appending a value
+                # rfc8785 cannot canonicalise (e.g. an out-of-domain integer)
+                # made the check silently pass, so a rejection could be
+                # rewritten as an allow and the chain still reported intact.
+                raise LedgerIntegrityError(
+                    record.sequence,
+                    "verdict body is missing or cannot be canonicalised, so its "
+                    "hash cannot be recomputed. Absence of a result is not "
+                    "compliance here either.",
+                )
+            if recomputed != record.verdict_hash:
                 raise LedgerIntegrityError(
                     record.sequence,
                     "verdict body does not match its recorded hash",
@@ -293,6 +306,10 @@ def _verdict_hash_of(body: dict[str, Any]) -> str | None:
 
     Mirrors ``Verdict.content_hash()``: JCS over the same dict. A record whose
     body was edited will not reproduce its ``verdict_hash``.
+
+    Returns ``None`` when the body is absent or cannot be canonicalised.
+    Callers must treat ``None`` as an integrity **failure**, never as a pass --
+    see :meth:`EvidenceLedger.verify`.
     """
     if not body:
         return None

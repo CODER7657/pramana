@@ -7,6 +7,10 @@ like a product surface rather than a convenience script.
 from __future__ import annotations
 
 import json
+import re
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -254,3 +258,44 @@ class TestCitationsInOutput:
         ]
         assert cited[0]["citation"]["authority"] == "RBI"
         assert cited[0]["citation"]["effective_from"] == "2026-04-21"
+
+
+class TestReadmeNumbersAreTrue:
+    """The submission is positioned on 'nothing is claimed that isn't true'.
+
+    Three different test counts appeared in one README, in the same paragraph
+    that said 'where a number appears in this README, it was measured'. That is
+    the cheapest possible thing for a reader to use to discount everything
+    else, so the numbers are now asserted rather than maintained by hand.
+    """
+
+    _ROOT = Path(__file__).resolve().parents[2]
+
+    def _readme(self) -> str:
+        return (self._ROOT / "README.md").read_text(encoding="utf-8")
+
+    def test_the_stated_test_count_matches_reality(self) -> None:
+        out = subprocess.run(
+            [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=str(self._ROOT),
+        ).stdout
+        match = re.search(r"(\d+) tests? collected", out)
+        assert match, f"could not parse collection output: {out[-300:]}"
+        actual = int(match.group(1))
+
+        claimed = {int(n) for n in re.findall(r"(\d{3,4}) tests", self._readme())}
+        claimed |= {
+            int(n)
+            for n in re.findall(r"tests-(\d{3,4})%20passing", self._readme())
+        }
+        assert claimed, "README states no test count"
+        assert claimed == {actual}, (
+            f"README claims {sorted(claimed)} tests; pytest collects {actual}"
+        )
+
+    def test_the_readme_states_one_count_not_three(self) -> None:
+        counts = set(re.findall(r"(\d{3,4}) tests", self._readme()))
+        assert len(counts) <= 1, f"README states several different counts: {counts}"

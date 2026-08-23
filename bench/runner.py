@@ -263,6 +263,13 @@ class BenchReport:
             f"p95 {self.latency_p(0.95):.2f}ms   "
             f"p99 {self.latency_p(0.99):.2f}ms")
         add("")
+        lines.extend(self._render_findings())
+        return "\n".join(lines)
+
+    def _render_findings(self) -> list[str]:
+        """Newly-caught attacks, new false positives, and the caveat."""
+        lines: list[str] = []
+        add = lines.append
 
         caught = self.newly_caught
         add(f"  NEWLY CAUGHT ({len(caught)} attack(s) the baseline allowed)")
@@ -287,6 +294,17 @@ class BenchReport:
         add("  suite authored by the same people who authored the defence is a")
         add("  consistency check, not an independent result.")
         add("")
+        add("  And more than that, said plainly: the BASELINE is a derived")
+        add("  configuration of the same kernel. baseline_policy() narrows")
+        add("  PRAMANA's own policy to whatever ids each case disclosed. So a")
+        add("  case that omits a declared obligation is allowed by the baseline")
+        add("  BY CONSTRUCTION (not declared -> nothing missing) and rejected by")
+        add("  PRAMANA BY CONSTRUCTION (declared -> coverage synthesises")
+        add("  INDETERMINATE). For those cases the delta is not a measurement,")
+        add("  it is an identity, and what it measures is the coverage")
+        add("  invariant. Only the cases where a constraint is present and")
+        add("  violated have the two verifiers doing comparable work.")
+        add("")
         add("  What the comparison DOES support: the baseline column is not")
         add("  invented. Presence-driven evaluation is the measured behaviour")
         add("  of the AP2 reference implementation at e1ea56db, reproduced")
@@ -298,7 +316,7 @@ class BenchReport:
         add("  artifacts release 2026-10-04, or about attack classes nobody")
         add("  has yet thought to write a case for.")
         add("")
-        return "\n".join(lines)
+        return lines
 
 
 def _request(case: BenchCase) -> PaymentRequest:

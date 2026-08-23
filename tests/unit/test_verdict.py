@@ -101,7 +101,7 @@ class TestFailClosed:
         assert v.decision is Decision.ALLOW
 
     def test_empty_obligation_set_is_unrepresentable(self) -> None:
-        msg = r"declares nothing|at least one SATISFIED"
+        msg = r"declares nothing|policy-declared obligation"
         with pytest.raises(ValueError, match=msg):
             build_verdict(
                 [],
@@ -137,7 +137,7 @@ class TestFailClosed:
 class TestMustAffirmSomething:
     def test_all_not_applicable_is_unconstructible(self) -> None:
         """S3a. Previously returned ALLOW, having checked nothing."""
-        with pytest.raises(ValueError, match="at least one SATISFIED"):
+        with pytest.raises(ValueError, match="policy-declared obligation"):
             _verdict(
                 _ob(ObligationStatus.NOT_APPLICABLE, "a"),
                 _ob(ObligationStatus.NOT_APPLICABLE, "b"),
@@ -539,3 +539,101 @@ class TestCitation:
         c = Citation(authority="RBI", reference="r")
         with pytest.raises((AttributeError, TypeError)):
             c.authority = "tampered"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Invariant 4, scoped. Both halves are review findings.
+# ---------------------------------------------------------------------------
+
+
+class TestAffirmationIsScoped:
+    def test_a_reject_does_not_need_an_affirmation(self) -> None:
+        """A refusal is not permission, so it need not have satisfied anything.
+
+        Requiring it made a malformed request crash the gate with a ValueError
+        instead of rejecting it.
+        """
+        v = build_verdict(
+            [_ob(ObligationStatus.INDETERMINATE, "a")],
+            policy_version=POLICY,
+            declared_obligations=("a",),
+            trace_id=TRACE,
+            mandate_ref=REF,
+        )
+        assert v.decision is Decision.REJECT
+
+    def test_an_all_indeterminate_verdict_is_constructible(self) -> None:
+        v = build_verdict(
+            [],
+            policy_version=POLICY,
+            declared_obligations=("a", "b", "c"),
+            trace_id=TRACE,
+            mandate_ref=REF,
+        )
+        assert v.decision is Decision.REJECT
+        assert len(v.blocking) == 3
+
+    def test_bookkeeping_cannot_satisfy_the_invariant(self) -> None:
+        """An undeclared SATISFIED obligation must not earn an ALLOW.
+
+        Previously the ledger's own `evidence.recorded` obligation met this,
+        so an all-NOT_APPLICABLE policy result reached ALLOW whenever the
+        ledger happened to be up.
+        """
+        with pytest.raises(ValueError, match="policy-declared obligation"):
+            build_verdict(
+                [
+                    _ob(ObligationStatus.NOT_APPLICABLE, "declared.rule"),
+                    _ob(ObligationStatus.SATISFIED, "evidence.recorded"),
+                ],
+                policy_version=POLICY,
+                declared_obligations=("declared.rule",),
+                trace_id=TRACE,
+                mandate_ref=REF,
+            )
+
+    def test_a_declared_satisfied_obligation_does_earn_an_allow(self) -> None:
+        v = build_verdict(
+            [
+                _ob(ObligationStatus.SATISFIED, "declared.rule"),
+                _ob(ObligationStatus.NOT_APPLICABLE, "declared.other"),
+            ],
+            policy_version=POLICY,
+            declared_obligations=("declared.rule", "declared.other"),
+            trace_id=TRACE,
+            mandate_ref=REF,
+        )
+        assert v.decision is Decision.ALLOW
+
+
+class TestSynthesisAttribution:
+    def test_a_missing_regulatory_check_is_attributed_to_its_authority(self) -> None:
+        """Synthesised obligations previously claimed MERCHANT with no citation,
+        including missing rbi.* checks, in a system where ADR-0006 makes a
+        citation mandatory for regulatory obligations."""
+        citation = Citation(
+            authority="RBI", reference="E-mandate Framework, 2026", clause="AFA"
+        )
+        v = build_verdict(
+            [_ob(ObligationStatus.SATISFIED, "ok")],
+            policy_version=POLICY,
+            declared_obligations=("ok", "rbi.pre_debit_notice"),
+            trace_id=TRACE,
+            mandate_ref=REF,
+            declared_meta={
+                "rbi.pre_debit_notice": (ObligationSource.REGULATORY, citation)
+            },
+        )
+        synth = next(o for o in v.obligations if o.id == "rbi.pre_debit_notice")
+        assert synth.source is ObligationSource.REGULATORY
+        assert synth.citation is citation
+
+    def test_without_metadata_it_still_synthesises_and_blocks(self) -> None:
+        v = build_verdict(
+            [_ob(ObligationStatus.SATISFIED, "ok")],
+            policy_version=POLICY,
+            declared_obligations=("ok", "unknown.rule"),
+            trace_id=TRACE,
+            mandate_ref=REF,
+        )
+        assert v.decision is Decision.REJECT

@@ -85,6 +85,15 @@ obligations:
       evidence is outside the framework.
     params:
       ceiling_paise: 1500000
+      # Categories carrying the enhanced ceiling are handled by
+      # rbi.category_ceiling. Without this, the standard ceiling applied to
+      # every transaction and the INR 1,00,000 carve-out was unreachable:
+      # a blocking obligation rejects, so category_ceiling returning SATISFIED
+      # could never rescue an afa_threshold VIOLATED.
+      defers_to_category_ceiling:
+        - insurance
+        - mutual_fund
+        - credit_card_bill
     citation:
       authority: RBI
       reference: "Digital Payments - E-mandate Framework, 2026"
