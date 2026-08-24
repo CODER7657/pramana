@@ -147,6 +147,7 @@ class TestParser:
             "demo",
             "chain",
             "finding",
+            "cost",
             "verify",
             "explain",
             "inject",
@@ -266,6 +267,35 @@ class TestFinding:
         """The unit misreading is part of the finding's provenance."""
         main(["finding"])
         assert "our first reading of it was not" in capsys.readouterr().out
+
+
+class TestCost:
+    """False-positive cost in rupees, which is what Track 2 literally asks for."""
+
+    def test_the_shipped_policy_refuses_no_legitimate_volume(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["cost"]) == 0
+        out = capsys.readouterr().out
+        assert "refused            : 0" in out
+        assert "INR 0" in out
+
+    def test_it_reports_volume_not_just_a_rate(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        main(["cost"])
+        out = capsys.readouterr().out
+        assert "monthly volume" in out
+        assert "% of GMV" in out
+
+    def test_it_states_who_wrote_the_corpus(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A self-authored corpus that does not say so is the failure mode."""
+        main(["cost"])
+        out = capsys.readouterr().out
+        assert "the same party wrote the corpus and" in out
+        assert "not from the predicates" in out
 
 
 class TestDispute:

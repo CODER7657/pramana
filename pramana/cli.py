@@ -34,6 +34,7 @@ from pramana.kernel.verdict import (
     Verdict,
     build_verdict,
 )
+from pramana.kernel.verify.policy import PolicyError
 
 _DEMO_TRACE = "4bf92f3577b34da6a3ce929d0e0e4736"
 _DEMO_REF = hashlib.sha256(b"demo-closed-mandate-jwt").hexdigest()
@@ -716,6 +717,80 @@ def cmd_finding(_: argparse.Namespace) -> int:
     return 0 if reproduced else 1
 
 
+def cmd_counterfactual(args: argparse.Namespace) -> int:
+    """Re-decide the corpus under a candidate policy before shipping it.
+
+    Exit 1 when the candidate would allow an attack the baseline blocked. A
+    policy change that loosens a control should not be able to pass CI quietly.
+    """
+    from bench.counterfactual import compare_path  # noqa: PLC0415
+
+    try:
+        report = compare_path(args.policy)
+    except PolicyError as exc:
+        print(f"candidate policy will not load: {exc}")
+        return 2
+
+    print(report.render())
+    return 1 if report.newly_allowed_attacks else 0
+
+
+def cmd_cost(args: argparse.Namespace) -> int:
+    """False-positive cost in rupees, which is the unit Track 2 asks for.
+
+    A rate says nothing about whether the cases behind it were worth INR 800 or
+    INR 8,00,000. This prints the legitimate corpus, what the gate decides for
+    each shape, and the volume any refusal would cost.
+    """
+    from bench.corpus import corpus, monthly_gmv_paise  # noqa: PLC0415
+    from bench.runner import _request  # noqa: PLC0415
+    from pramana.kernel.gate import Kernel  # noqa: PLC0415
+    from pramana.kernel.verify.policy import builtin_policy  # noqa: PLC0415
+
+    policy = builtin_policy()
+    kernel = Kernel(policy)
+    bar = "=" * 78
+    print(f"\n{bar}\nFALSE-POSITIVE COST -- legitimate corpus under {policy.version}")
+    print(bar)
+    print(f"  {'case':<32}{'ticket':>14}{'per month':>18}{'decision':>12}")
+
+    refused_paise = 0
+    refused = 0
+    for entry in corpus():
+        result = kernel.evaluate(_request(entry.case))
+        allowed = result.is_allowed
+        if not allowed:
+            refused_paise += entry.monthly_paise
+            refused += 1
+        print(f"  {entry.case.id:<32}"
+              f"{f'INR {entry.value_paise / 100:,.0f}':>14}"
+              f"{f'INR {entry.monthly_paise / 100:,.0f}':>18}"
+              f"{('ALLOW' if allowed else 'REFUSED'):>12}")
+        if not allowed:
+            print(f"      blocked by: "
+                  f"{', '.join(o.id for o in result.verdict.blocking[:3])}")
+
+    total = monthly_gmv_paise()
+    print(f"\n  cases              : {len(corpus())}")
+    print(f"  monthly volume     : INR {total / 100:,.0f}")
+    print(f"  refused            : {refused} "
+          f"({refused / len(corpus()):.1%})")
+    print(f"  refused volume     : INR {refused_paise / 100:,.0f}"
+          f"  ({refused_paise / total:.2%} of GMV)")
+    print("\n  Read this before quoting it. These shapes are derived from the")
+    print("  RBI framework's own parameters and typical Indian ticket sizes,")
+    print("  not from the predicates -- but the same party wrote the corpus and")
+    print("  the gate, so a shape nobody thought of is a shape nobody wrote.")
+    print("  The monthly counts are order-of-magnitude estimates used only to")
+    print("  weight the volume, and they are stated rather than hidden. Real")
+    print("  merchant traffic is what would make this number independent.")
+    print("\n  Why the rupee column exists: we shipped a rule that refused every")
+    print("  insurance premium between INR 15,000 and INR 1,00,000 -- an entire")
+    print("  product category -- while the false-positive RATE read 0.0%.")
+    print()
+    return 0 if refused == 0 else 1
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """Emit a verdict as canonical JSON, for piping into other tools."""
     verdict = _withheld_constraint() if args.withhold else _legitimate()
@@ -758,6 +833,18 @@ def build_parser() -> argparse.ArgumentParser:
         "finding", help="reproduce the vendor-confirmed AP2 defect locally"
     )
     finding.set_defaults(func=cmd_finding)
+
+    counterfactual = sub.add_parser(
+        "counterfactual",
+        help="re-decide the corpus under a candidate policy before shipping it",
+    )
+    counterfactual.add_argument("--policy", required=True, metavar="PATH")
+    counterfactual.set_defaults(func=cmd_counterfactual)
+
+    cost = sub.add_parser(
+        "cost", help="false-positive cost of the shipped policy, in rupees"
+    )
+    cost.set_defaults(func=cmd_cost)
 
     verify = sub.add_parser("verify", help="emit a verdict as canonical JSON")
     verify.add_argument(

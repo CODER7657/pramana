@@ -29,7 +29,7 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-655%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-670%20passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](POSTMORTEM.md)
 
 > **We found two defects in Google's AP2 reference implementation while building
@@ -205,12 +205,14 @@ in a dispute can recompute the hash from the same facts in a different language.
 ## Status
 
 Honest, and updated as it changes. First build session, 2026-08-23.
-**655 tests**, all green. That number is asserted by a test, so it cannot drift.
+**670 tests**, all green. That number is asserted by a test, so it cannot drift.
 
 | Component | State |
 | --- | --- |
 | Verdict kernel — invariants, JCS canonicalisation | **Built** |
-| CLI — `chain`/`finding`/`demo`/`verify`/`explain`/`inject`/`dispute`/`replay`/`providers` | **Built** |
+| CLI — `chain`/`finding`/`cost`/`counterfactual`/`demo`/`verify`/`explain`/`inject`/`dispute`/`replay`/`providers` | **Built** |
+| Legitimate corpus + false-positive cost in rupees | **Built** |
+| Counterfactual policy replay (blast radius before shipping) | **Built**, over the corpus — not production history |
 | AP2 chain verification spike | **Built**, reproduces the finding |
 | **AP2 adapter** — chain verified, disclosures pinned, nonce freshness | **Built**, computes what it used to require |
 | LLM provider chain — Cerebras → Groq → NVIDIA, cache, offline | **Built** |
@@ -319,6 +321,53 @@ costs 22 ms at depth 2000. That is an open item, not a measured claim.
 wrote the gate; 0% ASR against a suite authored by the defence's own authors is a
 consistency check, not an independent result. `pramana bench` prints that caveat
 every time, and a test asserts it cannot be dropped.
+
+### The false-positive side, in rupees
+
+A rate is not a cost. `0.0% (0/8)` says nothing about whether the eight cases were worth
+₹800 or ₹8,00,000, and that gap is not hypothetical: **we shipped a rule that refused
+every insurance premium between ₹15,000 and ₹1,00,000 — an entire product category —
+while the false-positive rate read 0.0%**, because no case covered it.
+
+```bash
+pramana cost
+```
+
+```
+  cases              : 12
+  monthly volume     : INR 4,511,730,000
+  refused            : 0 (0.0%)
+  refused volume     : INR 0  (0.00% of GMV)
+```
+
+The corpus in [`bench/corpus.py`](bench/corpus.py) is derived from the RBI framework's own
+parameters — both ceilings, both boundaries, the 24-hour notice, the validity window — and
+typical Indian ticket sizes, **not** from the predicates. Each case names the provision it
+came from. It is still self-authored, the monthly counts are order-of-magnitude estimates,
+and the command says both things in its own output.
+
+### Before you change a rule
+
+```bash
+pramana counterfactual --policy candidate.yaml
+```
+
+```
+  0 would flip REJECT -> ALLOW
+  4 would flip ALLOW  -> REJECT   (INR 326,000,000/month newly refused)
+      at-the-ceiling                    INR 120,000,000
+        blocked by: rbi.afa_threshold
+```
+
+An immutable decision record, a versioned policy and a deterministic kernel compose into
+blast-radius analysis: re-decide the corpus under a candidate rule and see what moves,
+before it reaches production. It exits non-zero if the candidate would allow an attack the
+current policy blocks. A probabilistic scorer cannot offer this — you cannot ask a model
+what it *would have* decided under different weights.
+
+It replays the corpus, not the ledger, and says so: `LedgerRecord` stores the verdict, not
+the request facts that produced it, so real history cannot be re-decided until those are
+persisted.
 
 What the comparison *does* support: the baseline column is not invented.
 Presence-driven evaluation is the measured behaviour of the AP2 reference

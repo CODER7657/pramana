@@ -52,7 +52,7 @@ downstream, a provider outage costs an explanation, not a payment.
 
 | | |
 | --- | --- |
-| Tests | 655 |
+| Tests | 670 |
 | Statement coverage | **95%** |
 | `pramana/kernel/gate.py` | 100% |
 | `pramana/kernel/verdict.py` | 99% |
@@ -299,10 +299,15 @@ Ordered by what we would do first, not by how impressive it sounds.
    against the SDK at the pinned SHA. The benchmark still simulates the
    protocol layer, and `mandate.*` is still caller-supplied.
 
-4. **A legitimate-traffic corpus we did not author.** The false-positive rate is
-   0/8 against eight boundary cases we wrote. Eight is not a corpus, and we wrote
-   them. Real traffic, or AIP-Bench's cases when they release on 2026-10-04,
-   would make the number mean something.
+4. **A legitimate-traffic corpus we did not author.** Partly addressed and
+   still open. `bench/corpus.py` now carries twelve recurring-payment shapes
+   derived from the RBI framework's own parameters rather than from the
+   predicates, each naming its provision, each weighted with a ticket size so
+   `pramana cost` can report refused volume in rupees rather than as a rate.
+   What has *not* changed is who wrote them. A shape nobody thought of is a
+   shape nobody wrote, so real merchant traffic -- or AIP-Bench when its
+   artifacts release on 2026-10-04 -- is still what would make the number
+   independent.
 
 5. **`pramana/config.py` and `kernel/trace.py`.** The two lowest-covered modules,
    at 50% and 84%. `config.py`'s gap is the `.env` parse loop, which is trivial to
