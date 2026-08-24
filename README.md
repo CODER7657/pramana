@@ -29,7 +29,7 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-631%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-639%20passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](POSTMORTEM.md)
 
 > **We found two defects in Google's AP2 reference implementation while building
@@ -200,7 +200,7 @@ in a dispute can recompute the hash from the same facts in a different language.
 ## Status
 
 Honest, and updated as it changes. First build session, 2026-08-23.
-**631 tests**, all green. That number is asserted by a test, so it cannot drift.
+**639 tests**, all green. That number is asserted by a test, so it cannot drift.
 
 | Component | State |
 | --- | --- |
@@ -351,7 +351,7 @@ structural ones do not.
 | --- | --- | --- |
 | Output | a score | a named obligation + the provision behind it |
 | Reproducible in 8 months | no — weights moved | **yes, byte-identical** |
-| Verifiable by a third party | no | **yes, without our code** |
+| Recomputable by a third party | no | **yes, without our code** — `node tools/verify.mjs` |
 | Cites a regulation | no | **required** |
 
 ```bash
@@ -364,6 +364,30 @@ pramana replay
     recomputed from the body: a4fd801e3d6331d0f46601ef3771d57d...
     identical               : True
 ```
+
+"Recomputable in another language" is easy to assert and cheap to check, so it is
+checked. [`tools/verify.mjs`](tools/verify.mjs) is 40 lines of Node with no dependencies
+and no import from this project — it re-implements RFC 8785 and the chain rules from the
+spec, and it has never seen the Python.
+
+```bash
+pramana chain --ledger var/demo.jsonl
+node tools/verify.mjs var/demo.jsonl
+```
+
+```
+OK  3 record(s) verified, chain intact
+    head fd0d2d8abcf30ace38b0220c7592098cd9470ee26e05fdf0bbc6664c92c29345
+    recomputed by node with no PRAMANA code and no dependencies
+```
+
+The two implementations are held to the same bytes by
+[`tests/integration/test_third_party_verifier.py`](tests/integration/test_third_party_verifier.py),
+which also requires them to agree on what counts as tampering — a flipped decision, a
+dropped body, a broken link, a reordered chain. **And on what does not:** a test named
+for the limitation asserts that both accept a truncated tail, because neither can do
+otherwise without a signature over the head. That signature is unshipped, so
+"verifiable by a third party" below means *recomputable*, not *non-repudiable*.
 
 Every `REGULATORY` obligation **must** carry a `Citation` — the constructor
 rejects one without it. So a rejection reads *"per RBI / Digital Payments —

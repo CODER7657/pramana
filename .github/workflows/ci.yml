@@ -82,6 +82,16 @@ jobs:
           fi
           echo "fail-closed exit code confirmed"
 
+      - name: A third party recomputes the ledger without our code
+        # The README claims a verdict can be recomputed "in a different
+        # language". tools/verify.mjs is that claim as an artifact: Node,
+        # no dependencies, no import from this project. If the two
+        # implementations ever disagree about a digest, the claim was false.
+        run: |
+          set -euo pipefail
+          pramana chain --ledger "${RUNNER_TEMP}/ci-ledger.jsonl" || true
+          node tools/verify.mjs "${RUNNER_TEMP}/ci-ledger.jsonl"
+
       - name: README numbers match reality
         # Three different test counts once appeared in one README, in the same
         # paragraph claiming every number was measured. Now asserted.

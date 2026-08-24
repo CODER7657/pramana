@@ -52,7 +52,7 @@ downstream, a provider outage costs an explanation, not a payment.
 
 | | |
 | --- | --- |
-| Tests | 631 |
+| Tests | 639 |
 | Statement coverage | **95%** |
 | `pramana/kernel/gate.py` | 100% |
 | `pramana/kernel/verdict.py` | 99% |
@@ -275,8 +275,15 @@ Ordered by what we would do first, not by how impressive it sounds.
    leaves a shorter but internally valid chain, and it cannot prove *we* produced
    the chain rather than someone who recomputed it wholesale. Both need the same
    thing: an Ed25519 signature over the head hash. That turns "tamper-evident to
-   us" into "non-repudiable to a third party", and it is the one word the Vulcan
-   comparison table currently overstates.
+   us" into "non-repudiable to a third party".
+
+   The *recomputation* half of that claim is now an artifact rather than an
+   assertion: `tools/verify.mjs` is 40 lines of dependency-free Node that
+   re-implements RFC 8785 and the chain rules from the spec, and a test
+   requires it to agree with the Python on the same bytes -- including on the
+   truncated tail that neither can catch. The comparison table now says
+   "recomputable" rather than "verifiable", which is the word the code
+   supports.
 
 2. **The three-hop `issuer_jwt_hash` case.** We demonstrated presence-driven
    evaluation with a single hop, default `sd_hash`, and a holder-chosen

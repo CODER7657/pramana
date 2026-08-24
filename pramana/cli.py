@@ -22,6 +22,7 @@ from pramana.config import load_dotenv, provider_status
 from pramana.console import configure_stdout, console_safe
 from pramana.kernel.ledger.chain_log import (
     EvidenceLedger,
+    JsonlStore,
     MemoryStore,
     _verdict_hash_of,
 )
@@ -399,6 +400,7 @@ def _chain_act(
     policy: Any,
     required: tuple[str, ...],
     nonces: Any,
+    ledger: Any,
     replay_of: Any = None,
 ) -> tuple[int, Any]:
     """Mint (or replay) one presentation, decide on it, and print the working."""
@@ -439,7 +441,7 @@ def _chain_act(
         print(f"                   {console_safe(violation)}")
     print(f"  backend says   : mandate.budget = {str(budget.status).upper()}")
 
-    result = Kernel(policy, ledger=EvidenceLedger(MemoryStore())).evaluate(
+    result = Kernel(policy, ledger=ledger).evaluate(
         PaymentRequest(
             mandate_ref=hashlib.sha256(
                 chain.presentation.token.encode()
@@ -476,6 +478,15 @@ def _chain_act(
     return (0 if verdict.is_allowed else 1), chain
 
 
+def _ledger_note(path: str | None) -> None:
+    """Point at the independent verifier, which is the point of writing it."""
+    if not path:
+        return
+    print()
+    print(f"  evidence written to {path}")
+    print(f"  recompute it without this codebase:  node tools/verify.mjs {path}")
+
+
 def cmd_chain(args: argparse.Namespace) -> int:
     """The finding, end to end, against the real AP2 SDK. No hand-built verdict.
 
@@ -506,6 +517,9 @@ def cmd_chain(args: argparse.Namespace) -> int:
     policy = builtin_policy()
     required = required_constraints_from(policy)
     nonces = SeenNonces()
+    # --ledger writes real JSONL, so a third party can recompute the chain
+    # without this codebase. tools/verify.mjs does exactly that.
+    ledger = EvidenceLedger(JsonlStore(args.ledger) if args.ledger else MemoryStore())
     print(f"\npolicy {policy.version} requires these constraints to be PRESENT:")
     print(f"  {', '.join(sorted(required)) or '(nothing)'}")
 
@@ -517,7 +531,9 @@ def cmd_chain(args: argparse.Namespace) -> int:
             policy=policy,
             required=required,
             nonces=nonces,
+            ledger=ledger,
         )
+        _ledger_note(args.ledger)
         print()
         return code
 
@@ -528,6 +544,7 @@ def cmd_chain(args: argparse.Namespace) -> int:
         policy=policy,
         required=required,
         nonces=nonces,
+        ledger=ledger,
     )
     code, withheld = _chain_act(
         "2. SPENDING CAP WITHHELD, CHARGE OVER THE CAP",
@@ -536,6 +553,7 @@ def cmd_chain(args: argparse.Namespace) -> int:
         policy=policy,
         required=required,
         nonces=nonces,
+        ledger=ledger,
     )
     _chain_act(
         "3. THE SAME PRESENTATION, REPLAYED",
@@ -544,6 +562,7 @@ def cmd_chain(args: argparse.Namespace) -> int:
         policy=policy,
         required=required,
         nonces=nonces,
+        ledger=ledger,
         replay_of=withheld,
     )
     print(
@@ -553,6 +572,7 @@ def cmd_chain(args: argparse.Namespace) -> int:
         "enumerated what was disclosed, compared it to what policy required, and\n"
         "refused. Absence is not consent.\n"
     )
+    _ledger_note(args.ledger)
     return code
 
 
@@ -581,6 +601,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--withhold",
         action="store_true",
         help="withhold the spending cap from the presentation",
+    )
+    chain.add_argument(
+        "--ledger",
+        metavar="PATH",
+        help="append the evidence records to a JSONL ledger file",
     )
     chain.set_defaults(func=cmd_chain)
 
