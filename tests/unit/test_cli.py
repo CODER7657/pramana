@@ -449,6 +449,30 @@ class TestReadmeNumbersAreTrue:
         counts = set(re.findall(r"(\d{3,4}) tests", self._readme()))
         assert len(counts) <= 1, f"README states several different counts: {counts}"
 
+    def test_the_readme_states_one_coverage_number(self) -> None:
+        """The value is gated in CI; this gates the shape.
+
+        A test cannot honestly check the coverage *value*: it would be reading
+        the data file of a run still in progress, or the stale one from last
+        time, and a gate that reports last run's number is worse than no gate.
+        scripts/check_readme_coverage.py does the value check after the session
+        ends. What is checkable here is the failure mode that actually
+        happened to the test count -- several different figures in one
+        document -- and that both documents state one at all.
+        """
+        readme = self._readme()
+        badges = set(re.findall(r"coverage-(\d{1,3})%25", readme))
+        assert len(badges) == 1, f"README states several coverage numbers: {badges}"
+
+        postmortem = (self._ROOT / "POSTMORTEM.md").read_text(encoding="utf-8")
+        stated = set(
+            re.findall(r"\|\s*Statement coverage\s*\|\s*\*\*(\d{1,3})%\*\*", postmortem)
+        )
+        assert len(stated) == 1, f"POSTMORTEM states several: {stated}"
+        assert badges == stated, (
+            f"README badge says {badges}, POSTMORTEM says {stated}"
+        )
+
     def test_the_quoted_benchmark_numbers_match_a_live_run(self) -> None:
         """The test count was guarded and the expensive number was not.
 

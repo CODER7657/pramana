@@ -82,6 +82,12 @@ jobs:
           fi
           echo "fail-closed exit code confirmed"
 
+      - name: Coverage badge matches measured coverage
+        # Runs after the test step, which wrote the .coverage data. Coverage
+        # went 95.1% -> 94.3% when the adapter, the corpus and the
+        # counterfactual landed, and both documents went on saying 95%.
+        run: python scripts/check_readme_coverage.py
+
       - name: A third party recomputes the ledger without our code
         # The README claims a verdict can be recomputed "in a different
         # language". tools/verify.mjs is that claim as an artifact: Node,
