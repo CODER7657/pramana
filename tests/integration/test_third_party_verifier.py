@@ -4,7 +4,7 @@ The README says a third party in a dispute can recompute a verdict's hash from
 the same facts **in a different language**. That was an assertion about RFC 8785
 rather than a demonstrated property, and an assertion is not evidence.
 
-`tools/verify.mjs` is 40 lines of Node with no dependencies and no import from
+`tools/verify.mjs` is one Node file with no dependencies and no import from
 this project. These tests run it against a ledger this project wrote and require
 that it agree -- on the digests, on the chain, and on what counts as tampering.
 If the two ever disagree, one of them is wrong and the claim was never true.

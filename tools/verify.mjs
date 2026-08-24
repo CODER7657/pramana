@@ -3,7 +3,8 @@
 //
 //   node tools/verify.mjs var/ledger.jsonl
 //
-// Zero dependencies, zero imports from this project, ~40 lines of actual work.
+// Zero dependencies and zero imports from this project. 63 lines of code, about
+// half of which is the RFC 8785 canonicaliser.
 // It exists because "a third party in a dispute can recompute the hash from
 // the same facts in a different language" was an assertion, and an assertion
 // is not an artifact. This is the artifact. If it disagrees with the Python,

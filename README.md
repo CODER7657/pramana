@@ -272,7 +272,8 @@ is `403` and not `200`. That cost us correct REST semantics on purpose.
 
 **3 · As the evidence layer under disputes.** Every decision writes a hash-chained record.
 When a customer says *"my agent never agreed to this"*, the merchant holds a record a third
-party can recompute — `node tools/verify.mjs`, forty lines, no PRAMANA code involved. That
+party can recompute — `node tools/verify.mjs`, one dependency-free file, no PRAMANA code
+involved. That
 is worth more coming from a neutral party than from either side of the dispute.
 
 **4 · As a policy console for the risk team.** `pramana counterfactual --policy candidate.yaml`
@@ -704,8 +705,8 @@ pramana replay
     identical               : True
 ```
 
-[`tools/verify.mjs`](tools/verify.mjs) is 40 lines of Node with no dependencies and no
-import from this project. It re-implements RFC 8785 and the chain rules from the spec, and
+[`tools/verify.mjs`](tools/verify.mjs) is a single Node file — 63 lines of code, no
+dependencies, no import from this project. It re-implements RFC 8785 and the chain rules from the spec, and
 it has never seen the Python:
 
 ```bash

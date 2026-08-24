@@ -278,7 +278,7 @@ Ordered by what we would do first, not by how impressive it sounds.
    us" into "non-repudiable to a third party".
 
    The *recomputation* half of that claim is now an artifact rather than an
-   assertion: `tools/verify.mjs` is 40 lines of dependency-free Node that
+   assertion: `tools/verify.mjs` is a dependency-free Node file that
    re-implements RFC 8785 and the chain rules from the spec, and a test
    requires it to agree with the Python on the same bytes -- including on the
    truncated tail that neither can catch. The comparison table now says
