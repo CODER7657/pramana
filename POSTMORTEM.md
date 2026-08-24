@@ -52,7 +52,7 @@ downstream, a provider outage costs an explanation, not a payment.
 
 | | |
 | --- | --- |
-| Tests | 639 |
+| Tests | 644 |
 | Statement coverage | **95%** |
 | `pramana/kernel/gate.py` | 100% |
 | `pramana/kernel/verdict.py` | 99% |

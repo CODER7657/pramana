@@ -29,7 +29,7 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-639%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-644%20passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](POSTMORTEM.md)
 
 > **We found two defects in Google's AP2 reference implementation while building
@@ -37,6 +37,11 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 > behaviour, and invited a public issue — so both are now upstream at
 > [AP2#339](https://github.com/google-agentic-commerce/AP2/issues/339) and
 > [AP2#340](https://github.com/google-agentic-commerce/AP2/pull/340).
+>
+> **Reproduce it yourself in thirty seconds:** `pramana finding` mints two
+> presentations against the installed SDK, verifies both, and runs AP2's own
+> evaluators over each. It prints the commit it actually ran against, and exits
+> non-zero if the defect ever stops reproducing.
 >
 > A verifier that reads an empty violation list as compliance will keep
 > authorising uncapped payments, and no upstream fix is coming. That is what
@@ -200,12 +205,12 @@ in a dispute can recompute the hash from the same facts in a different language.
 ## Status
 
 Honest, and updated as it changes. First build session, 2026-08-23.
-**639 tests**, all green. That number is asserted by a test, so it cannot drift.
+**644 tests**, all green. That number is asserted by a test, so it cannot drift.
 
 | Component | State |
 | --- | --- |
 | Verdict kernel — invariants, JCS canonicalisation | **Built** |
-| CLI — `chain`/`demo`/`verify`/`explain`/`inject`/`dispute`/`replay`/`providers` | **Built** |
+| CLI — `chain`/`finding`/`demo`/`verify`/`explain`/`inject`/`dispute`/`replay`/`providers` | **Built** |
 | AP2 chain verification spike | **Built**, reproduces the finding |
 | **AP2 adapter** — chain verified, disclosures pinned, nonce freshness | **Built**, computes what it used to require |
 | LLM provider chain — Cerebras → Groq → NVIDIA, cache, offline | **Built** |

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from pramana.adapters.ap2_chain import installed_ap2_commit
 from pramana.cli import build_parser, main
 
 
@@ -145,6 +146,7 @@ class TestParser:
         [
             "demo",
             "chain",
+            "finding",
             "verify",
             "explain",
             "inject",
@@ -201,6 +203,54 @@ class TestChain:
         replayed = capsys.readouterr().out.split("3. THE SAME PRESENTATION")[1]
         assert "chain.nonce_fresh" in replayed
         assert "REPLAYED, byte-identical" in replayed
+
+
+class TestFinding:
+    """One command reproduces a vendor-confirmed defect in Google's SDK.
+
+    The polarity is deliberate: exit 0 means the defect REPRODUCED. This
+    command exists to keep proving that upstream behaviour is still what we
+    reported, so if AP2 ever changes it, the command goes red rather than the
+    README going quietly false.
+    """
+
+    def test_the_defect_still_reproduces(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["finding"]) == 0
+        out = capsys.readouterr().out
+        assert "cap disclosed" in out
+        assert "cap WITHHELD" in out
+        assert "reproduced : True" in out
+
+    def test_it_reports_the_commit_actually_installed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Not a constant copied from pyproject -- a second copy would drift."""
+        main(["finding"])
+        commit = installed_ap2_commit()
+        assert commit is not None
+        assert commit in capsys.readouterr().out
+
+    def test_it_shows_both_the_execution_and_the_provenance(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        main(["finding"])
+        out = capsys.readouterr().out
+        # executed
+        assert "chain verifies" in out
+        assert "AP2 violations" in out
+        # quoted, and visibly separate from the executed half
+        assert "REPORTED, AND CONFIRMED IN WRITING" in out
+        assert "AP2/issues/339" in out
+        assert "Won't Fix (Intended Behavior)" in out
+
+    def test_it_records_that_our_own_first_reading_was_wrong(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The unit misreading is part of the finding's provenance."""
+        main(["finding"])
+        assert "our first reading of it was not" in capsys.readouterr().out
 
 
 class TestDispute:

@@ -29,6 +29,7 @@ API at ``e1ea56db``. Marking one index is how you withhold exactly one thing.
 
 from __future__ import annotations
 
+import json
 import secrets
 from dataclasses import dataclass
 from typing import Any, Final
@@ -143,6 +144,35 @@ def mint(
         withheld=withhold_budget,
         amount_paise=amount_paise,
     )
+
+
+def installed_ap2_commit() -> str | None:
+    """The AP2 commit actually installed, from pip's ``direct_url.json``.
+
+    Not a constant. A constant would be a second copy of the SHA in
+    ``pyproject.toml``, and a second copy of anything is the defect this
+    project has now found three times -- most recently as a policy handoff
+    whose two category lists could drift apart.
+
+    More usefully, this reports what the process is *running against* rather
+    than what the manifest *asked for*. Those differ exactly when it matters:
+    a stale editable install, a resolver that fell back, a local checkout
+    someone moved. CI separately asserts the manifest still names the
+    reviewed SHA.
+    """
+    from importlib import metadata  # noqa: PLC0415
+
+    try:
+        raw = metadata.distribution("ap2").read_text("direct_url.json")
+    except Exception:  # pragma: no cover - depends on install method
+        return None
+    if not raw:  # pragma: no cover
+        return None
+    try:
+        commit = json.loads(raw).get("vcs_info", {}).get("commit_id")
+    except ValueError:  # pragma: no cover
+        return None
+    return str(commit) if commit else None
 
 
 def backend_obligations(

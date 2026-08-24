@@ -576,6 +576,129 @@ def cmd_chain(args: argparse.Namespace) -> int:
     return code
 
 
+_VENDOR_QUOTE = (
+    "You've clearly identified a mechanism where a selectively withheld "
+    "constraint could lead to a permissions bypass, potentially allowing "
+    "reported over-cap payments."
+)
+
+
+def _wrap(text: str, width: int) -> list[str]:
+    """Wrap without importing textwrap for one call."""
+    lines: list[str] = []
+    current = ""
+    for word in text.split():
+        if len(current) + len(word) + 1 > width:
+            lines.append(current)
+            current = word
+        else:
+            current = f"{current} {word}".strip()
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _reproduce() -> list[tuple[str, bool, int]]:
+    """Mint both presentations and let AP2 evaluate its own payloads.
+
+    Returns (label, chain verified, violation count) per row. Nothing here is
+    recited: the SD-JWTs are signed on this machine and the violation counts
+    come from ``create_payment_evaluator``.
+    """
+    from pramana.adapters.ap2 import read_presentation  # noqa: PLC0415
+    from pramana.adapters.ap2_chain import ap2_violations, mint  # noqa: PLC0415
+
+    rows: list[tuple[str, bool, int]] = []
+    for label, withhold in (("cap disclosed", False), ("cap WITHHELD", True)):
+        chain = mint(withhold_budget=withhold)
+        reading = read_presentation(
+            chain.presentation,
+            resolve_issuer_key=chain.resolve_issuer_key,
+            required_constraints=(),
+        )
+        violations = ap2_violations(reading.payloads, chain.closed_mandate)
+        rows.append((label, reading.verified, len(violations)))
+    return rows
+
+
+def _print_provenance(bar: str) -> None:
+    """The half that is quoted rather than executed, kept visibly separate."""
+    print(f"\n{bar}\nREPORTED, AND CONFIRMED IN WRITING\n{bar}")
+    print("  Google OSS VRP, 2026-08-23 -- closed the same day as")
+    print("  Won't Fix (Intended Behavior). Their words:\n")
+    for line in _wrap(_VENDOR_QUOTE, 62):
+        print(f"    {line}")
+    print("\n  issuetracker.google.com/issues/551304805")
+    print("  issuetracker.google.com/issues/551303152")
+    print("  github.com/google-agentic-commerce/AP2/issues/339   (open)")
+    print("  github.com/google-agentic-commerce/AP2/pull/340     (open)")
+    print("\n  No bounty: AP2 sits outside the tiered OSS VRP scope. That")
+    print("  outcome is the argument for this project rather than against it --")
+    print("  the behaviour is confirmed, it is not being changed, so a")
+    print("  verifier-side control is necessary rather than redundant.")
+
+    print(f"\n{bar}\nSECOND FINDING -- units, documented at AP2#340\n{bar}")
+    print("  Budget.max is in MAJOR units; its sibling AmountRange.max is in")
+    print("  minor ones. An issuer following the schema descriptions creates a")
+    print("  cap 100x larger than intended. We hit it ourselves: the first")
+    print("  spike read a 47,500 charge against a 5,000.0 cap as a bypass, and")
+    print("  it was INR 475 against INR 5,000 -- correctly allowed. The finding")
+    print("  is real; our first reading of it was not, which is why the repro")
+    print("  above is executed rather than quoted.")
+
+
+def cmd_finding(_: argparse.Namespace) -> int:
+    """Reproduce the vendor-confirmed defect, on this machine, in one command.
+
+    Exit code 0 means the defect **reproduced**, which is the unusual polarity
+    and the correct one. This command's job is to show that upstream behaviour
+    is still what we reported. If AP2 ever changes it, this goes red -- and
+    finding that out from a red command is much better than finding it out
+    from a panel.
+    """
+    from pramana.adapters.ap2_chain import (  # noqa: PLC0415
+        ATTEMPTED_PAISE,
+        CAP_PAISE,
+        installed_ap2_commit,
+    )
+
+    bar = "=" * 68
+    print(f"\n{bar}\nAP2 PRESENCE-DRIVEN CONSTRAINT EVALUATION -- live reproduction")
+    print(bar)
+    commit = installed_ap2_commit() or "unknown (not a VCS install)"
+    print("  SDK under test : google-agentic-commerce/AP2")
+    print(f"  commit         : {commit}")
+    print("  network        : none. Keys are generated locally and thrown away.")
+
+    rows = _reproduce()
+    print(f"\n  INR {CAP_PAISE / 100:,.0f} cap, INR {ATTEMPTED_PAISE / 100:,.0f} "
+          f"charge -- over the cap in both rows")
+    print(f"\n  {'presentation':<16}{'chain verifies':>16}{'AP2 violations':>16}"
+          f"{'payment':>12}")
+    for label, verified, count in rows:
+        print(f"  {label:<16}{verified!s:>16}{count:>16}"
+              f"{('BLOCKED' if count else 'ALLOWED'):>12}")
+
+    print("\n  Both chains are cryptographically valid. The second reports no")
+    print("  violation because the constraint that would have failed was never")
+    print("  disclosed -- and an empty violation list is what a presence-driven")
+    print("  verifier reads as compliance.")
+
+    _print_provenance(bar)
+
+    disclosed, withheld = rows
+    disclosed_ok, disclosed_count = disclosed[1], disclosed[2]
+    withheld_ok, withheld_count = withheld[1], withheld[2]
+    reproduced = bool(disclosed_ok and disclosed_count and withheld_ok
+                      and not withheld_count)
+    print(f"\n  reproduced : {reproduced}")
+    if not reproduced:
+        print("  Upstream behaviour has CHANGED. Re-read the table above before")
+        print("  repeating any claim in the README.")
+    print()
+    return 0 if reproduced else 1
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """Emit a verdict as canonical JSON, for piping into other tools."""
     verdict = _withheld_constraint() if args.withhold else _legitimate()
@@ -608,6 +731,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="append the evidence records to a JSONL ledger file",
     )
     chain.set_defaults(func=cmd_chain)
+
+    finding = sub.add_parser(
+        "finding", help="reproduce the vendor-confirmed AP2 defect locally"
+    )
+    finding.set_defaults(func=cmd_finding)
 
     verify = sub.add_parser("verify", help="emit a verdict as canonical JSON")
     verify.add_argument(
