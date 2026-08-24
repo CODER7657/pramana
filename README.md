@@ -97,7 +97,194 @@ spike is [`scripts/spike_chain_e2e.py`](scripts/spike_chain_e2e.py).
 
 ---
 
-## The HTTP gate
+## How the system works
+
+Four diagrams. The first is where it sits, and it is the one that explains every other
+decision in this repository.
+
+### 1. Where it sits, and who is trusted
+
+```mermaid
+flowchart LR
+    subgraph U["UNTRUSTED — the governed party"]
+        A["AI buying agent<br/>holds a signed mandate<br/>chooses what to disclose"]
+    end
+
+    subgraph M["MERCHANT / PSP — the trusted caller"]
+        C["Checkout"]
+        B["Backend<br/>holds MandateContext<br/>reports mandate.*"]
+    end
+
+    subgraph G["PRAMANA — the gate"]
+        AD["AP2 adapter<br/>verifies the chain<br/>enumerates disclosures"]
+        K["Kernel.evaluate<br/>the single decision path"]
+        L[("Evidence ledger<br/>hash-chained, append-only")]
+    end
+
+    R["Razorpay / the rails"]
+
+    A -->|"AP2 presentation<br/>SD-JWT delegation chain"| C
+    C --> AD
+    C --> B
+    AD -->|"protocol obligations"| K
+    B -->|"mandate + merchant obligations"| K
+    K -->|"200 ALLOW / 403 REJECT"| C
+    K --> L
+    C -->|"only on ALLOW"| R
+```
+
+**Read the boxes, not the arrows.** The agent is inside the untrusted boundary — it is the
+party the whole system exists to govern. So the gate is *not* something the agent calls.
+It sits in the merchant's authorization path, where an agent that would rather not be
+checked has no say in the matter.
+
+This is why PRAMANA is not an agent tool or an MCP server. A control the suspect can
+decline to invoke is not a control.
+
+### 2. One decision, seven steps
+
+Every decision — from the HTTP gate, the CLI, the benchmark, or a library caller — goes
+through `Kernel.evaluate`. There is no second path and no shortcut for "internal" callers.
+
+```mermaid
+flowchart TD
+    REQ["PaymentRequest<br/>facts already extracted at the edge"]
+
+    REQ --> S1["1 · protocol<br/>chain.verified · chain.nonce_fresh · chain.disclosures_pinned"]
+    S1 --> S2["2 · mandate<br/>budget · payee_in_scope · not_expired"]
+    S2 --> S3["3 · merchant<br/>category_allowed — a mandate cannot weaken this"]
+    S3 --> S4["4 · regulatory<br/>the five RBI predicates, each carrying its citation"]
+    S4 --> S5["5 · advisory risk<br/>one-way: can subtract authority, never add it"]
+    S5 --> S6["6 · build_verdict<br/>coverage enforced · decision derived"]
+    S6 --> S7["7 · ledger append<br/>hash-chained evidence"]
+    S7 --> OUT["Verdict + trace + record"]
+
+    S7 -.->|"write fails"| FAIL["evidence.recorded = INDETERMINATE<br/>rebuild → REJECT"]
+    FAIL --> OUT
+
+    S1 -.->|"predicate group raises"| CRASH["internal.protocol = INDETERMINATE<br/>a check that could not run is not a check that passed"]
+    CRASH --> S6
+```
+
+Step 7 is the one people get wrong. An authorisation we cannot evidence is not an
+authorisation, so a ledger failure produces a blocking obligation rather than an
+allow-and-alert. Availability is never traded for authority.
+
+### 3. The invariant the whole project is about
+
+A verifier must be able to tell **"checked and passed"** apart from **"never checked"**.
+Here is that distinction as control flow:
+
+```mermaid
+flowchart TD
+    P["Policy declares an obligation<br/>e.g. chain.disclosures_pinned"]
+    P --> Q{"Did a predicate report<br/>a result for it?"}
+
+    Q -->|"no — nothing ran"| SYN["Synthesised as INDETERMINATE<br/>at construction time"]
+    Q -->|"yes"| ST{"What did it report?"}
+
+    ST -->|"SATISFIED"| PASS["does not block"]
+    ST -->|"NOT_APPLICABLE"| PASS
+    ST -->|"VIOLATED"| BLOCK["blocks"]
+    SYN --> BLOCK
+
+    PASS --> DEC{"Any blocking obligation<br/>in the whole set?"}
+    BLOCK --> DEC
+    DEC -->|"yes"| REJ["decision = REJECT"]
+    DEC -->|"no"| AFF{"Is at least one<br/>DECLARED obligation SATISFIED?"}
+    AFF -->|"no"| ERR["refuses to construct<br/>nothing was affirmed"]
+    AFF -->|"yes"| ALW["decision = ALLOW"]
+```
+
+`Verdict.decision` is a **derived property**. No caller can assign `ALLOW`; it can only be
+earned from an obligation set in which nothing blocks and something declared was affirmed.
+Each of those four gates exists because its absence was a live defect found in review —
+they are enumerated in [POSTMORTEM.md](POSTMORTEM.md).
+
+### 4. Where models are allowed, and where they are not
+
+```mermaid
+flowchart LR
+    subgraph MP["MONEY PATH — deterministic · no model · ₹0 · p50 0.26 ms"]
+        K["Kernel.evaluate"] --> V["Verdict<br/>decision is derived from<br/>ObligationStatus values"]
+    end
+
+    subgraph DS["DOWNSTREAM — models welcome · failure is cosmetic"]
+        E["Explainer<br/>verdict → prose"]
+        D["Dispute pack<br/>facts deterministic, narrative generated"]
+        T["Triage<br/>clusters rejections"]
+    end
+
+    V --> E
+    V --> D
+    V --> T
+
+    X["Attacker-controlled<br/>model output"] -.->|"no such code path exists"| K
+```
+
+Nothing in the codebase converts a string into an `ObligationStatus`. That is not a policy
+we follow, it is a path that does not exist — which is why a fully attacker-controlled
+provider cannot move a verdict. `pramana inject` demonstrates it: the decision and the
+content hash come back byte-identical.
+
+### What computes, and what is supplied
+
+Of the twelve obligations the shipped policy declares:
+
+| Layer | Obligations | Where the result comes from |
+| --- | --- | --- |
+| Protocol | `chain.verified`, `chain.disclosures_pinned` | **Computed** by [`adapters/ap2.py`](pramana/adapters/ap2.py) from the real presentation |
+| Protocol | `chain.nonce_fresh` | **Computed** from a seen-nonce store — process-local today, which is stated where it is defined |
+| Regulatory | the five `rbi.*` predicates | **Computed** from the extracted facts, each carrying its citation |
+| Mandate | `budget`, `payee_in_scope`, `not_expired` | **Supplied by the caller** — they need the persisted `MandateContext` that AP2 defines and never stores |
+| Merchant | `category_allowed` | **Supplied by the caller** — it is the merchant's own policy |
+
+Eight computed, four supplied. The four stay *declared*, so if the caller does not report
+them, the coverage invariant fires and the payment is refused. A trusted caller that goes
+silent still cannot produce an allow.
+
+---
+
+## Where it runs, and how a PSP would adopt it
+
+Four ways in, cheapest first. They are the same kernel — the HTTP gate holds no decision
+logic, so the API, the CLI and the benchmark cannot disagree about what is authorised.
+
+```mermaid
+flowchart TD
+    K["Kernel.evaluate<br/>one implementation"]
+    K --> M1["1 · Library<br/>imported into the existing<br/>authorization path"]
+    K --> M2["2 · Service<br/>POST /v1/evaluate<br/>200 allow · 403 reject"]
+    K --> M3["3 · Evidence layer<br/>hash-chained ledger<br/>for dispute defence"]
+    K --> M4["4 · Policy console<br/>counterfactual replay<br/>before a rule ships"]
+```
+
+**1 · As a library, inline.** One import, one call, **p50 0.26 ms**, no network, ₹0 per
+decision. A PSP's authorization path already decides authorise-or-decline; this adds one
+more question to the list it already asks. No new service, no timeout policy, and no
+answer needed to "what do we do when the verifier is unreachable?" — in-process, it never
+is.
+
+**2 · As a service.** For merchants outside your codebase.
+`uvicorn pramana.gateway.app:default_app --factory`. A merchant who integrates badly —
+checking `response.ok` and ignoring the body — still gets the safe answer, because refusal
+is `403` and not `200`. That cost us correct REST semantics on purpose.
+
+**3 · As the evidence layer under disputes.** Every decision writes a hash-chained record.
+When a customer says *"my agent never agreed to this"*, the merchant holds a record a third
+party can recompute — `node tools/verify.mjs`, forty lines, no PRAMANA code involved. That
+is worth more coming from a neutral party than from either side of the dispute.
+
+**4 · As a policy console for the risk team.** `pramana counterfactual --policy candidate.yaml`
+answers *what would this rule change have done* before it ships: which decisions flip, and
+how many rupees of legitimate volume start being refused. It exits non-zero if the
+candidate would allow an attack the current policy blocks.
+
+---
+
+## The HTTP gate, in detail
+
+Mode 2 above, with the wire contract spelled out.
 
 ```bash
 uvicorn pramana.gateway.app:default_app --factory
@@ -378,100 +565,40 @@ we have not run.
 
 ---
 
-## Where this sits next to Razorpay Vulcan
+## "We already have Vulcan. Why this?"
 
 Razorpay launched **Vulcan** on 18 August 2026 — a payments foundation model trained on
-~3 trillion data points across 4 billion payments, ~3,000 signals per transaction.
-PRAMANA does not compete with it and makes no claim to do fraud detection.
+~3 trillion data points across 4 billion payments, ~3,000 signals per transaction, doing
+routing, network fraud detection, RTO risk and checkout personalisation. It is a genuinely
+formidable system and PRAMANA does not compete with it, does not do fraud detection, and
+would not be improved by trying.
 
-They answer different questions:
+The answer is not "ours is better". It is that **the attack this project is about has no
+anomaly in it to find**, and that is a property of the attack, not a shortcoming of the
+model.
 
-| | Vulcan-class scorer | PRAMANA |
-| --- | --- | --- |
-| Question | *"Is this transaction likely fraudulent?"* | *"Was this agent permitted to make it?"* |
-| Method | Probabilistic, learned from history | Deterministic, cryptographic |
-| Improves with | More data, better architecture | Nothing — it is already exact |
-| Correct to be a model | **Yes** | **No** |
+### Why more data does not close this gap
 
-The withheld-constraint case is exactly where the gap opens. A compromised agent
-presenting a chain with the cap withheld produces a transaction that is statistically
-unremarkable: known agent, valid chain, amount inside its own historical range, familiar
-merchant. There is no anomaly to detect. Semantic attacks weaken as models improve;
-structural ones do not.
+Look at what the withheld-cap transaction actually looks like to a scorer:
 
-### Where PRAMANA is better, not merely different
+| Signal | Value |
+| --- | --- |
+| Agent identity | known, previously seen, good history |
+| Delegation chain | **cryptographically valid** — every signature verifies |
+| Merchant | familiar, previously transacted |
+| Amount | inside the agent's own historical range |
+| Category, time, device, velocity | unremarkable |
+| Constraint violations reported by AP2 | **zero** |
 
-| | Learned scorer | PRAMANA |
-| --- | --- | --- |
-| Output | a score | a named obligation + the provision behind it |
-| Reproducible in 8 months | no — weights moved | **yes, byte-identical** |
-| Recomputable by a third party | no | **yes, without our code** — `node tools/verify.mjs` |
-| Cites a regulation | no | **required** |
+Every column is normal. The transaction is not unusual — **the authorisation is
+incomplete**, and those are different things. What went wrong is that a rule which should
+have been checked was never presented, so there was nothing left to fail.
 
-```bash
-pramana replay
-```
+A model cannot learn its way to this. The feature would have to be *"a constraint that is
+absent"* — and an absent constraint is indistinguishable, on the wire, from a mandate that
+legitimately never had one. There is no signal to weight, because there is no signal.
 
-```
-  record 1 (reject)
-    stored verdict hash     : a4fd801e3d6331d0f46601ef3771d57d...
-    recomputed from the body: a4fd801e3d6331d0f46601ef3771d57d...
-    identical               : True
-```
-
-"Recomputable in another language" is easy to assert and cheap to check, so it is
-checked. [`tools/verify.mjs`](tools/verify.mjs) is 40 lines of Node with no dependencies
-and no import from this project — it re-implements RFC 8785 and the chain rules from the
-spec, and it has never seen the Python.
-
-```bash
-pramana chain --ledger var/demo.jsonl
-node tools/verify.mjs var/demo.jsonl
-```
-
-```
-OK  3 record(s) verified, chain intact
-    head fd0d2d8abcf30ace38b0220c7592098cd9470ee26e05fdf0bbc6664c92c29345
-    recomputed by node with no PRAMANA code and no dependencies
-```
-
-The two implementations are held to the same bytes by
-[`tests/integration/test_third_party_verifier.py`](tests/integration/test_third_party_verifier.py),
-which also requires them to agree on what counts as tampering — a flipped decision, a
-dropped body, a broken link, a reordered chain. **And on what does not:** a test named
-for the limitation asserts that both accept a truncated tail, because neither can do
-otherwise without a signature over the head. That signature is unshipped, so
-"verifiable by a third party" below means *recomputable*, not *non-repudiable*.
-
-Every `REGULATORY` obligation **must** carry a `Citation` — the constructor
-rejects one without it. So a rejection reads *"per RBI / Digital Payments —
-E-mandate Framework, 2026 / AFA exemption ceiling"*, not *"risk score 0.94"*.
-See [ADR-0006](docs/adr/0006-verdicts-are-compliance-artifacts.md).
-
-This is not a claim to be better at detecting fraud. It is not, and does not try
-to be. It is a claim that **authority decisions should be provable**, and that a
-probabilistic system cannot make them provable however good it gets.
-
-### The integration contract
-
-So PRAMANA integrates rather than competes, under one invariant:
-
-> **An advisory risk signal can subtract authority. It can never add any.**
-
-A `HIGH` band can block. `LOW` emits `NOT_APPLICABLE` — never `SATISFIED`. An
-unreachable scorer emits `NOT_APPLICABLE` and does not block. A scorer that is
-compromised, mis-thresholded, or attacker-controlled into returning "low risk" for
-everything therefore cannot authorise anything; the deterministic obligations still have
-to pass on their own. A scorer that *throws* cannot deny service either — a fraud model
-must not become an outage on checkout.
-
-`to_obligation` has exactly two reachable statuses and `SATISFIED` is not one of them.
-[ADR-0005](docs/adr/0005-advisory-risk-signals.md) records the analysis; the property is
-swept exhaustively in [`tests/unit/test_risk_signals.py`](tests/unit/test_risk_signals.py).
-
-You can watch it instead of reading it. `--risk-says-low` attaches a mock Vulcan-class
-scorer — [`pramana/adapters/vulcan_mock.py`](pramana/adapters/vulcan_mock.py), named for
-what it is — to the withheld-cap presentation:
+**We demonstrate this rather than assert it:**
 
 ```bash
 pramana chain --withhold --risk-says-low
@@ -488,9 +615,118 @@ pramana chain --withhold --risk-says-low
                    [violated] chain.disclosures_pinned
 ```
 
-Every signal says fine, and the payment is refused. Note that the scorer is not wrong —
-the withheld-cap attack **is** statistically unremarkable, so `LOW` is the correct
-answer. That is exactly why authority cannot be a score.
+**The scorer is not wrong.** `LOW` is the correct answer to the question it was asked.
+That is the entire point: the question *"is this likely fraud?"* has a good answer here,
+and it is the wrong question. The right one is *"was this agent permitted to do it?"*, and
+that one has a checkable answer that does not involve a probability.
+
+### The two questions, and why one of them must not be a model
+
+```mermaid
+flowchart TD
+    T["Agent-initiated payment arrives"]
+    T --> Q1["Is this likely fraudulent?"]
+    T --> Q2["Was this agent permitted to make it?"]
+
+    Q1 --> V["Vulcan-class scorer<br/>~3,000 signals · learned from 4B payments"]
+    Q2 --> P["PRAMANA<br/>12 declared obligations · deterministic"]
+
+    V --> S["a probability<br/>gets better with more data"]
+    P --> D["a named obligation + the RBI clause<br/>already exact; more data changes nothing"]
+
+    S -.->|"can subtract authority<br/>never add any"| P
+```
+
+| | Vulcan-class scorer | PRAMANA |
+| --- | --- | --- |
+| Question | *is it fraud?* | *was it permitted?* |
+| Method | probabilistic, learned | deterministic, cryptographic |
+| Output | a score | a named obligation + the provision behind it |
+| Improves with | more data, better architecture | nothing — it is already exact |
+| Reproducible in 8 months | no — the weights moved | **yes, byte-identical** |
+| Recomputable by a third party | no | **yes, without our code** — `node tools/verify.mjs` |
+| Cites a regulation | no | **required** — the constructor refuses one that does not |
+| Correct to be a model | **yes** | **no** |
+
+### The part that matters in a dispute, and in an audit
+
+A score is not a reason. When a customer charges back with *"my agent never agreed to
+this"*, or when the RBI asks *"show me you enforced the ₹15,000 AFA ceiling"*, the two
+systems produce very different artifacts:
+
+> `risk score 0.94`
+
+versus
+
+> `rbi.afa_threshold VIOLATED — per RBI / Digital Payments — E-mandate Framework, 2026 /`
+> `AFA exemption ceiling for recurring transactions, effective 2026-04-21`
+
+The second is a compliance artifact. Every `REGULATORY` obligation **must** carry a
+`Citation` — the constructor rejects one without it — and the whole verdict is
+canonicalised with RFC 8785, so anyone can recompute the hash from the same facts, years
+later, in a different language.
+
+### So it is not either/or — it makes Vulcan safer to deploy
+
+PRAMANA integrates with a scorer under one invariant:
+
+> **An advisory risk signal can subtract authority. It can never add any.**
+
+`HIGH` can block. `LOW` emits `NOT_APPLICABLE`, never `SATISFIED`. A scorer that is
+unreachable, compromised, mis-thresholded, or attacker-controlled into returning "low risk"
+for everything therefore **cannot authorise anything** — the deterministic obligations
+still have to pass on their own. And a scorer that throws cannot deny service either,
+because a fraud model must never become an outage on checkout.
+
+`to_obligation` has exactly two reachable statuses and `SATISFIED` is not one of them. That
+is enforced by construction rather than by convention, swept exhaustively in
+[`tests/unit/test_risk_signals.py`](tests/unit/test_risk_signals.py), and recorded in
+[ADR-0005](docs/adr/0005-advisory-risk-signals.md).
+
+**The honest summary:** semantic attacks weaken as models improve; structural ones do not.
+Vulcan should keep answering the question it is extremely good at. This answers the other
+one, and refuses to guess.
+
+### Evidence anyone can check, years later
+
+The claim that separates a verdict from a log entry: **a third party in a dispute can
+recompute this from the same facts, in a different language, without our code.** That is
+easy to assert and cheap to check, so it is checked.
+
+```bash
+pramana replay
+```
+
+```
+  record 1 (reject)
+    stored verdict hash     : a4fd801e3d6331d0f46601ef3771d57d...
+    recomputed from the body: a4fd801e3d6331d0f46601ef3771d57d...
+    identical               : True
+```
+
+[`tools/verify.mjs`](tools/verify.mjs) is 40 lines of Node with no dependencies and no
+import from this project. It re-implements RFC 8785 and the chain rules from the spec, and
+it has never seen the Python:
+
+```bash
+pramana chain --ledger var/demo.jsonl
+node tools/verify.mjs var/demo.jsonl
+```
+
+```
+OK  3 record(s) verified, chain intact
+    head fd0d2d8abcf30ace38b0220c7592098cd9470ee26e05fdf0bbc6664c92c29345
+    recomputed by node with no PRAMANA code and no dependencies
+```
+
+The two implementations are held to the same bytes by
+[`tests/integration/test_third_party_verifier.py`](tests/integration/test_third_party_verifier.py),
+which also requires them to agree on what counts as tampering — a flipped decision, a
+dropped body, a broken link, a reordered chain. **And on what does not:** a test named for
+the limitation asserts that both accept a truncated tail, because neither can do otherwise
+without a signature over the head. That signature is unshipped, which is why the table
+above says *recomputable* rather than *non-repudiable*. It is the next thing to build, and
+it is recorded as such in [POSTMORTEM.md](POSTMORTEM.md).
 
 ---
 
