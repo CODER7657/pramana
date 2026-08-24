@@ -285,12 +285,46 @@ Ordered by what we would do first, not by how impressive it sounds.
    "recomputable" rather than "verifiable", which is the word the code
    supports.
 
-2. **The three-hop `issuer_jwt_hash` case.** We demonstrated presence-driven
-   evaluation with a single hop, default `sd_hash`, and a holder-chosen
-   redaction. The SDK README describes `issuer_jwt_hash` as letting a downstream
-   delegate drop disclosures without breaking chain integrity. If that is
-   adversarially reachable it is a materially stronger finding. We asked the
-   vendor and said plainly in the report that we had not shown it.
+2. ~~**The three-hop `issuer_jwt_hash` case.**~~ **Tested. Negative result,
+   and the item is closed.**
+
+   We reported one finding and said plainly, in the report, that we had not
+   shown a second and worse one: `issuer_jwt_hash` binding commits only to the
+   preceding issuer JWT, which the SDK documents as "allowing the next delegate
+   to drop disclosures from it". If reachable, that inverts the victim -- an
+   agent discloses its cap honestly and a *downstream* delegate removes it
+   before checkout.
+
+   It does not reproduce through the documented API, and
+   `scripts/spike_three_hop.py` shows why in four lines of output:
+
+   ```
+   two-hop chain builds and verifies : 2 payloads
+   parse_token(chain)                : ValueError: empty disclosure segment
+   present(chain, ...)               : ValueError: empty disclosure segment
+   ```
+
+   `present` appends a hop to a *token*, never to a *chain*: it parses its
+   input with `parse_token`, which splits on `~` and rejects the empty segment
+   the `~~` chain separator produces. The third hop cannot be constructed, so
+   the downstream-redaction case has nowhere to happen. `claims_to_disclose`
+   has the same limit for the same reason -- it rebuilds the token from
+   `split('~', maxsplit=1)[0]`, which on a chain is only the first hop's JWT.
+
+   Both fail **closed** -- a `ValueError`, not a silent acceptance -- so
+   neither is a security defect. What they are is a boundary on the delegation
+   story: two hops, not N.
+
+   What this licenses us to say is "we tested it and it does not reproduce
+   through the public API". What it does **not** license is "impossible":
+   hand-assembling hops beneath `present` with `kb_sd_jwt.create` was not
+   attempted. That is deliberate, because it would be a weaker claim anyway --
+   an attacker already writing raw SD-JWT is not using this API surface, while
+   the finding we did ship needs only a well-formed SDK call.
+
+   Recorded because an open item you raised yourself and never went back to is
+   a claim with a hole in it, and closing one with a negative result is worth
+   more than leaving it open to sound thorough.
 
 3. ~~**Real AP2 objects at the gate boundary.**~~ **Shipped.**
    `pramana/adapters/ap2.py` verifies a real presentation and enumerates the

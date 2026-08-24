@@ -526,6 +526,15 @@ Following the vendor's suggestion, both findings are now public upstream:
    following the SDK's own documentation can create a spending cap 100× larger than
    intended.
 
+**A third we looked for and did not find.** The disclosure report said plainly that we had
+*not* shown a downstream variant, where a delegate strips a cap the agent disclosed
+honestly. We went back and tested it:
+[`scripts/spike_three_hop.py`](scripts/spike_three_hop.py) shows it does not reproduce
+through the SDK's public API — `present()` appends a hop to a token, never to a chain, so
+a third hop cannot be built and the case has nowhere to happen. It fails closed, so it is
+a boundary rather than a defect. Recorded because an open item you raised yourself and
+never went back to is a claim with a hole in it.
+
 ---
 
 ## Licence
