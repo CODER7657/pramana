@@ -7,17 +7,20 @@ E-mandate envelope as executable predicates, requires that every obligation a po
 declares actually produced a result, and writes a hash-chained evidence record for every
 verdict.
 
-**What it does not yet do:** parse an [AP2](https://github.com/google-agentic-commerce/AP2)
-presentation itself. Protocol- and mandate-layer results are *supplied by the caller* —
-the merchant's own backend — and the kernel requires them to be present rather than
-computing them. Only the five `rbi.*` predicates compute anything today. The AP2 adapter
-is the one component the benchmark simulates rather than exercises, and it is the top open
-item in [POSTMORTEM.md](POSTMORTEM.md).
+The contribution is one idea: **a verifier must be able to tell "checked and passed"
+apart from "never checked"**, and that distinction is enforceable as a type rather than
+remembered as a convention. A declared obligation with no result becomes `INDETERMINATE`
+at construction, and `INDETERMINATE` blocks exactly as hard as `VIOLATED`.
 
-That distinction matters for the headline: when `pramana demo` blocks a withheld spending
-cap, it blocks because **nothing reported a result for a declared obligation** — not
-because PRAMANA inspected the disclosures and noticed. Same outcome, fails closed either
-way, but it is coverage enforcement rather than detection.
+**What computes, and what does not.** PRAMANA parses an
+[AP2](https://github.com/google-agentic-commerce/AP2) presentation and computes three
+protocol obligations from it — `chain.verified` from AP2's own chain verification,
+`chain.disclosures_pinned` by enumerating the constraints the presentation actually
+disclosed against the ones policy requires, and `chain.nonce_fresh` from a seen-nonce
+store. The five `rbi.*` predicates compute the regulatory envelope. The three
+`mandate.*` obligations are **supplied by the caller** — the merchant's own backend —
+because they need the persisted `MandateContext` that AP2 defines and never stores. They
+stay declared, so their absence still rejects.
 
 The substrate is **agent-native payments (AP2 / SD-JWT delegation chains)**, hardened with
 **policy-as-code**. Language models are used throughout the system — to shop, to explain a
@@ -26,7 +29,7 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-604%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-631%20passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](POSTMORTEM.md)
 
 > **We found two defects in Google's AP2 reference implementation while building
@@ -48,36 +51,44 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 
 ## The problem, in one screen
 
+Everything below is computed. The SD-JWT is signed with freshly generated keys, AP2
+verifies the delegation chain, and AP2's own constraint evaluators run over the same
+verified payload PRAMANA reads.
+
 ```bash
-pramana demo
+pramana chain --withhold
 ```
 
 ```
 ====================================================================
-2. SPENDING CAP WITHHELD FROM THE PRESENTATION
+SPENDING CAP WITHHELD FROM THE PRESENTATION
 ====================================================================
-decision : REJECT
-coverage : 67% of policy-declared obligations
+  presentation   : 1642 chars, 5 tilde segments
+  cap / charge   : INR 5,000  /  INR 7,500
+  chain verifies : True
+  disclosed      : payment.allowed_payees
+  WITHHELD       : payment.budget
+  AP2 evaluators : 0 violation(s)  <- nothing left to evaluate
+  backend says   : mandate.budget = SATISFIED
 
-obligations:
-  [  ok  ] chain.verified                     (protocol)
-  [  ok  ] rbi.afa_threshold                  (regulatory)
-  [ ???? ] mandate.budget                     (merchant)
-           Policy declared this obligation but no predicate reported a
-           result for it. Absence of a result is not compliance.
+  PRAMANA        : REJECT   (100% coverage, 0.34 ms)
+                   [violated] chain.disclosures_pinned
+                   1 constraint(s) policy requires were withheld from this
+                   presentation: payment.budget. ... Absence is not consent.
 ```
 
-That second chain is **cryptographically valid**. Its signature verifies. Its delegation
-chain verifies. And it reports **zero constraint violations** — because the spending cap
-was never presented, so there was nothing left to evaluate.
+Read the middle three lines again. The chain is **cryptographically valid**. AP2's own
+evaluators — the reference implementation, at the pinned SHA — report **zero
+violations**, because the constraint they would have failed was never disclosed. A
+merchant backend following AP2 correctly therefore reports `mandate.budget: SATISFIED`.
 
-We measured this end-to-end against the AP2 reference implementation: a ₹7,500 charge
-cleared against a ₹5,000 cap. Reproduction in
-[`scripts/spike_chain_e2e.py`](scripts/spike_chain_e2e.py), analysis in
-[ADR-0003](docs/adr/0003-absent-constraint-is-not-consent.md).
+So this is not PRAMANA disagreeing with a careless integrator. It is PRAMANA refusing a
+₹7,500 charge against a ₹5,000 cap that the protocol's own evaluator affirmatively
+passed. `pramana chain` with no flag runs three acts: this one, a fully disclosed
+payment that is **allowed**, and act 2's presentation replayed and refused on the nonce.
 
-A verifier that cannot distinguish *"checked and passed"* from *"never checked"* is not a
-verifier. That distinction is what PRAMANA adds.
+Analysis in [ADR-0003](docs/adr/0003-absent-constraint-is-not-consent.md); the original
+spike is [`scripts/spike_chain_e2e.py`](scripts/spike_chain_e2e.py).
 
 ---
 
@@ -119,7 +130,7 @@ regulatory one.
 ```bash
 git clone <repo-url> && cd pramana
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/pramana demo
+.venv/bin/pramana chain
 ```
 
 On Windows, use `.venv\Scripts\` in place of `.venv/bin/`. Requires Python 3.11+.
@@ -189,13 +200,14 @@ in a dispute can recompute the hash from the same facts in a different language.
 ## Status
 
 Honest, and updated as it changes. First build session, 2026-08-23.
-**604 tests**, all green. That number is asserted by a test, so it cannot drift.
+**631 tests**, all green. That number is asserted by a test, so it cannot drift.
 
 | Component | State |
 | --- | --- |
 | Verdict kernel — invariants, JCS canonicalisation | **Built** |
-| CLI — `demo`/`verify`/`explain`/`inject`/`dispute`/`replay`/`providers` | **Built** |
+| CLI — `chain`/`demo`/`verify`/`explain`/`inject`/`dispute`/`replay`/`providers` | **Built** |
 | AP2 chain verification spike | **Built**, reproduces the finding |
+| **AP2 adapter** — chain verified, disclosures pinned, nonce freshness | **Built**, computes what it used to require |
 | LLM provider chain — Cerebras → Groq → NVIDIA, cache, offline | **Built** |
 | Verdict explainer + prompt-injection boundary | **Built** |
 | Evidence ledger (C5) - hash-chained, tamper-evident | **Built** |

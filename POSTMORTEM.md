@@ -52,7 +52,7 @@ downstream, a provider outage costs an explanation, not a payment.
 
 | | |
 | --- | --- |
-| Tests | 604 |
+| Tests | 631 |
 | Statement coverage | **95%** |
 | `pramana/kernel/gate.py` | 100% |
 | `pramana/kernel/verdict.py` | 99% |
@@ -285,9 +285,12 @@ Ordered by what we would do first, not by how impressive it sounds.
    adversarially reachable it is a materially stronger finding. We asked the
    vendor and said plainly in the report that we had not shown it.
 
-3. **Real AP2 objects at the gate boundary.** `PaymentRequest` takes already-
-   extracted facts. The adapter that turns a live AP2 presentation into those
-   facts is the one piece the benchmark simulates rather than exercises.
+3. ~~**Real AP2 objects at the gate boundary.**~~ **Shipped.**
+   `pramana/adapters/ap2.py` verifies a real presentation and enumerates the
+   constraints it actually disclosed, so `chain.disclosures_pinned` is a
+   detector rather than a declaration. `pramana chain` runs it end to end
+   against the SDK at the pinned SHA. The benchmark still simulates the
+   protocol layer, and `mandate.*` is still caller-supplied.
 
 4. **A legitimate-traffic corpus we did not author.** The false-positive rate is
    0/8 against eight boundary cases we wrote. Eight is not a corpus, and we wrote

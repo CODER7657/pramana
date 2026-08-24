@@ -142,11 +142,65 @@ class TestParser:
 
     @pytest.mark.parametrize(
         "cmd",
-        ["demo", "verify", "explain", "inject", "dispute", "providers", "replay"],
+        [
+            "demo",
+            "chain",
+            "verify",
+            "explain",
+            "inject",
+            "dispute",
+            "providers",
+            "replay",
+        ],
     )
     def test_all_subcommands_registered(self, cmd: str) -> None:
         args = build_parser().parse_args([cmd])
         assert hasattr(args, "func")
+
+
+class TestChain:
+    """`pramana chain` is the beat that stopped needing a caveat.
+
+    Before the adapter, the demo blocked a withheld cap because nothing had
+    reported a result for a declared obligation. These assertions are on the
+    detection: the constraint set was read, and the missing one is named.
+    """
+
+    def test_the_three_act_run_ends_rejected(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["chain"]) == 1
+        out = capsys.readouterr().out
+        assert "1. EVERYTHING DISCLOSED, WITHIN THE CAP" in out
+        assert "2. SPENDING CAP WITHHELD, CHARGE OVER THE CAP" in out
+        assert "3. THE SAME PRESENTATION, REPLAYED" in out
+
+    def test_the_legitimate_act_is_allowed(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """PRAMANA adds no false positive to a fully disclosed presentation."""
+        main(["chain"])
+        first = capsys.readouterr().out.split("2. SPENDING CAP WITHHELD")[0]
+        assert "PRAMANA        : ALLOW" in first
+
+    def test_the_withheld_act_names_the_constraint_it_detected(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["chain", "--withhold"]) == 1
+        out = capsys.readouterr().out
+        assert "WITHHELD       : payment.budget" in out
+        assert "chain.disclosures_pinned" in out
+        # The contrast, in the same screen: upstream sees nothing wrong.
+        assert "AP2 evaluators : 0 violation(s)" in out
+        assert "backend says   : mandate.budget = SATISFIED" in out
+
+    def test_the_replay_is_refused_on_the_nonce(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        main(["chain"])
+        replayed = capsys.readouterr().out.split("3. THE SAME PRESENTATION")[1]
+        assert "chain.nonce_fresh" in replayed
+        assert "REPLAYED, byte-identical" in replayed
 
 
 class TestDispute:

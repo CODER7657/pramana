@@ -11,6 +11,8 @@ import hashlib
 import json
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from pramana import __version__
 from pramana.ai.dispute import DisputeDrafter
@@ -35,6 +37,7 @@ from pramana.kernel.verdict import (
 _DEMO_TRACE = "4bf92f3577b34da6a3ce929d0e0e4736"
 _DEMO_REF = hashlib.sha256(b"demo-closed-mandate-jwt").hexdigest()
 _POLICY = "demo-policy@1"
+_CHAIN_NOW = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
 _PAYLOAD_PREVIEW = 60
 
 # The actual instrument, notified 21 April 2026. A regulatory rejection that
@@ -388,6 +391,171 @@ def cmd_dispute(args: argparse.Namespace) -> int:
     return 0 if pack.chain_verified else 1
 
 
+def _chain_act(
+    title: str,
+    *,
+    withhold: bool,
+    amount_paise: int,
+    policy: Any,
+    required: tuple[str, ...],
+    nonces: Any,
+    replay_of: Any = None,
+) -> tuple[int, Any]:
+    """Mint (or replay) one presentation, decide on it, and print the working."""
+    from pramana.adapters.ap2 import read_presentation  # noqa: PLC0415
+    from pramana.adapters.ap2_chain import (  # noqa: PLC0415
+        ap2_violations,
+        backend_obligations,
+        mint,
+    )
+    from pramana.kernel.gate import Kernel, PaymentRequest  # noqa: PLC0415
+    from pramana.kernel.verify.rbi import PaymentFacts  # noqa: PLC0415
+
+    chain = replay_of or mint(withhold_budget=withhold, amount_paise=amount_paise)
+
+    reading = read_presentation(
+        chain.presentation,
+        resolve_issuer_key=chain.resolve_issuer_key,
+        required_constraints=required,
+    )
+    upstream = ap2_violations(reading.payloads, chain.closed_mandate)
+    backend = backend_obligations(reading.payloads, chain.closed_mandate)
+    budget = next(o for o in backend if o.id == "mandate.budget")
+
+    bar = "=" * 68
+    print(f"\n{bar}\n{title}\n{bar}")
+    print(f"  presentation   : {chain.length} chars, {chain.segments} tilde segments"
+          f"{'  (REPLAYED, byte-identical)' if replay_of else ''}")
+    print(f"  cap / charge   : INR {chain.cap_paise / 100:,.0f}"
+          f"  /  INR {chain.amount_paise / 100:,.0f}")
+    print(f"  chain verifies : {reading.verified}")
+    print(f"  disclosed      : "
+          f"{', '.join(reading.disclosed_constraints) or '(none)'}")
+    if reading.missing_constraints:
+        print(f"  WITHHELD       : {', '.join(reading.missing_constraints)}")
+    print(f"  AP2 evaluators : {len(upstream)} violation(s)"
+          + ("" if upstream else "  <- nothing left to evaluate" if withhold else ""))
+    for violation in upstream:
+        print(f"                   {console_safe(violation)}")
+    print(f"  backend says   : mandate.budget = {str(budget.status).upper()}")
+
+    result = Kernel(policy, ledger=EvidenceLedger(MemoryStore())).evaluate(
+        PaymentRequest(
+            mandate_ref=hashlib.sha256(
+                chain.presentation.token.encode()
+            ).hexdigest(),
+            facts=PaymentFacts(
+                amount_paise=chain.amount_paise,
+                currency="INR",
+                category="groceries",
+                afa_performed=False,
+                afa_at_registration=True,
+                pre_debit_notice_at=_CHAIN_NOW - timedelta(hours=30),
+                execution_at=_CHAIN_NOW,
+                mandate_valid_from=_CHAIN_NOW - timedelta(days=30),
+                mandate_valid_until=_CHAIN_NOW + timedelta(days=30),
+            ),
+            protocol_results=(
+                *reading.obligations,
+                nonces.check(chain.presentation.expected_nonce),
+            ),
+            mandate_results=tuple(
+                o for o in backend if o.source is ObligationSource.MANDATE
+            ),
+            merchant_results=tuple(
+                o for o in backend if o.source is ObligationSource.MERCHANT
+            ),
+        )
+    )
+    verdict = result.verdict
+    print(f"\n  PRAMANA        : {str(verdict.decision).upper()}"
+          f"   ({verdict.coverage:.0%} coverage, {result.elapsed_ms:.2f} ms)")
+    for o in verdict.blocking:
+        print(f"                   [{o.status}] {o.id}")
+        print(f"                   {console_safe(o.detail)}")
+    return (0 if verdict.is_allowed else 1), chain
+
+
+def cmd_chain(args: argparse.Namespace) -> int:
+    """The finding, end to end, against the real AP2 SDK. No hand-built verdict.
+
+    Everything printed is computed. The SD-JWT is signed with freshly generated
+    keys, AP2 verifies the delegation chain, the disclosed constraint set is
+    enumerated from the verified payload, AP2's own evaluators run over that
+    same payload, and the verdict comes out of the kernel under the shipped
+    policy.
+
+    Three acts, because the contrast is the argument:
+
+    1. Everything disclosed, within the cap. Both verifiers allow it. PRAMANA
+       adds no false positive.
+    2. The cap withheld, the charge over it. AP2 reports zero violations and
+       the merchant's backend therefore reports ``mandate.budget: SATISFIED``,
+       correctly by upstream semantics. PRAMANA rejects: policy required that
+       constraint to be present and it was not.
+    3. Act 2's presentation replayed byte-for-byte. Refused on the nonce,
+       using state AP2 declines to hold.
+    """
+    from pramana.adapters.ap2 import required_constraints_from  # noqa: PLC0415
+    from pramana.adapters.ap2_chain import (  # noqa: PLC0415
+        CAP_PAISE,
+        SeenNonces,
+    )
+    from pramana.kernel.verify.policy import builtin_policy  # noqa: PLC0415
+
+    policy = builtin_policy()
+    required = required_constraints_from(policy)
+    nonces = SeenNonces()
+    print(f"\npolicy {policy.version} requires these constraints to be PRESENT:")
+    print(f"  {', '.join(sorted(required)) or '(nothing)'}")
+
+    if args.withhold:
+        code, _ = _chain_act(
+            "SPENDING CAP WITHHELD FROM THE PRESENTATION",
+            withhold=True,
+            amount_paise=750_000,
+            policy=policy,
+            required=required,
+            nonces=nonces,
+        )
+        print()
+        return code
+
+    _chain_act(
+        "1. EVERYTHING DISCLOSED, WITHIN THE CAP",
+        withhold=False,
+        amount_paise=CAP_PAISE // 2,
+        policy=policy,
+        required=required,
+        nonces=nonces,
+    )
+    code, withheld = _chain_act(
+        "2. SPENDING CAP WITHHELD, CHARGE OVER THE CAP",
+        withhold=True,
+        amount_paise=750_000,
+        policy=policy,
+        required=required,
+        nonces=nonces,
+    )
+    _chain_act(
+        "3. THE SAME PRESENTATION, REPLAYED",
+        withhold=True,
+        amount_paise=750_000,
+        policy=policy,
+        required=required,
+        nonces=nonces,
+        replay_of=withheld,
+    )
+    print(
+        "\nAct 2 is the finding. The chain is cryptographically valid, AP2's own\n"
+        "evaluators report nothing wrong, and the payment is over its cap -- because\n"
+        "the cap was never disclosed, so there was no rule left to fail. PRAMANA\n"
+        "enumerated what was disclosed, compared it to what policy required, and\n"
+        "refused. Absence is not consent.\n"
+    )
+    return code
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """Emit a verdict as canonical JSON, for piping into other tools."""
     verdict = _withheld_constraint() if args.withhold else _legitimate()
@@ -405,6 +573,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     demo = sub.add_parser("demo", help="show a legitimate and a withheld-cap verdict")
     demo.set_defaults(func=cmd_demo)
+
+    chain = sub.add_parser(
+        "chain", help="verify a REAL AP2 presentation and decide on it"
+    )
+    chain.add_argument(
+        "--withhold",
+        action="store_true",
+        help="withhold the spending cap from the presentation",
+    )
+    chain.set_defaults(func=cmd_chain)
 
     verify = sub.add_parser("verify", help="emit a verdict as canonical JSON")
     verify.add_argument(

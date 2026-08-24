@@ -116,8 +116,10 @@ show_error_codes = true
 pretty = true
 
 [[tool.mypy.overrides]]
-# The upstream AP2 SDK ships no py.typed marker.
-module = ["ap2.*"]
+# The upstream AP2 SDK ships no py.typed marker. `jwcrypto` is AP2's own key
+# type, reached only where we hand a JWK straight back to AP2 -- see
+# pramana/adapters/ap2_chain.py. Neither is on the decision path.
+module = ["ap2.*", "jwcrypto.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
