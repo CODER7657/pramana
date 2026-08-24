@@ -196,6 +196,21 @@ class TestChain:
         assert "AP2 evaluators : 0 violation(s)" in out
         assert "backend says   : mandate.budget = SATISFIED" in out
 
+    def test_a_low_risk_score_does_not_rescue_the_payment(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Every signal says fine, and it is still refused.
+
+        AP2 reports no violation, the backend reports mandate.budget
+        SATISFIED, and a Vulcan-class scorer returns LOW at 0.02 -- which is
+        the correct answer, because the attack is statistically unremarkable.
+        An advisory signal can subtract authority; it can never add any.
+        """
+        assert main(["chain", "--withhold", "--risk-says-low"]) == 1
+        out = capsys.readouterr().out
+        assert "risk scorer    : LOW (score 0.02)" in out
+        assert "PRAMANA        : REJECT" in out
+
     def test_the_replay_is_refused_on_the_nonce(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:

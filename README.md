@@ -29,7 +29,7 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-644%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-655%20passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](POSTMORTEM.md)
 
 > **We found two defects in Google's AP2 reference implementation while building
@@ -205,7 +205,7 @@ in a dispute can recompute the hash from the same facts in a different language.
 ## Status
 
 Honest, and updated as it changes. First build session, 2026-08-23.
-**644 tests**, all green. That number is asserted by a test, so it cannot drift.
+**655 tests**, all green. That number is asserted by a test, so it cannot drift.
 
 | Component | State |
 | --- | --- |
@@ -419,6 +419,29 @@ must not become an outage on checkout.
 `to_obligation` has exactly two reachable statuses and `SATISFIED` is not one of them.
 [ADR-0005](docs/adr/0005-advisory-risk-signals.md) records the analysis; the property is
 swept exhaustively in [`tests/unit/test_risk_signals.py`](tests/unit/test_risk_signals.py).
+
+You can watch it instead of reading it. `--risk-says-low` attaches a mock Vulcan-class
+scorer — [`pramana/adapters/vulcan_mock.py`](pramana/adapters/vulcan_mock.py), named for
+what it is — to the withheld-cap presentation:
+
+```bash
+pramana chain --withhold --risk-says-low
+```
+
+```
+  AP2 evaluators : 0 violation(s)  <- nothing left to evaluate
+  backend says   : mandate.budget = SATISFIED
+  risk scorer    : LOW (score 0.02)
+                   MOCK: known agent, familiar merchant, amount inside its own
+                   historical range. Nothing anomalous to report.
+
+  PRAMANA        : REJECT
+                   [violated] chain.disclosures_pinned
+```
+
+Every signal says fine, and the payment is refused. Note that the scorer is not wrong —
+the withheld-cap attack **is** statistically unremarkable, so `LOW` is the correct
+answer. That is exactly why authority cannot be a score.
 
 ---
 

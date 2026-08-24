@@ -401,6 +401,7 @@ def _chain_act(
     required: tuple[str, ...],
     nonces: Any,
     ledger: Any,
+    risk: Any = None,
     replay_of: Any = None,
 ) -> tuple[int, Any]:
     """Mint (or replay) one presentation, decide on it, and print the working."""
@@ -441,7 +442,9 @@ def _chain_act(
         print(f"                   {console_safe(violation)}")
     print(f"  backend says   : mandate.budget = {str(budget.status).upper()}")
 
-    result = Kernel(policy, ledger=ledger).evaluate(
+    result = Kernel(
+        policy, ledger=ledger, risk_adapters=(risk,) if risk else ()
+    ).evaluate(
         PaymentRequest(
             mandate_ref=hashlib.sha256(
                 chain.presentation.token.encode()
@@ -469,6 +472,12 @@ def _chain_act(
             ),
         )
     )
+    if risk is not None:
+        signal = risk.assess({})
+        score = f" (score {signal.score})" if signal.score is not None else ""
+        print(f"  risk scorer    : {str(signal.band).upper()}{score}")
+        print(f"                   {console_safe(signal.rationale)}")
+
     verdict = result.verdict
     print(f"\n  PRAMANA        : {str(verdict.decision).upper()}"
           f"   ({verdict.coverage:.0%} coverage, {result.elapsed_ms:.2f} ms)")
@@ -512,6 +521,7 @@ def cmd_chain(args: argparse.Namespace) -> int:
         CAP_PAISE,
         SeenNonces,
     )
+    from pramana.adapters.vulcan_mock import MockVulcanAdapter  # noqa: PLC0415
     from pramana.kernel.verify.policy import builtin_policy  # noqa: PLC0415
 
     policy = builtin_policy()
@@ -520,6 +530,9 @@ def cmd_chain(args: argparse.Namespace) -> int:
     # --ledger writes real JSONL, so a third party can recompute the chain
     # without this codebase. tools/verify.mjs does exactly that.
     ledger = EvidenceLedger(JsonlStore(args.ledger) if args.ledger else MemoryStore())
+    # --risk-says-low makes the one-way property visible: a scorer returning
+    # LOW, confidently and correctly, on a payment that is refused anyway.
+    risk = MockVulcanAdapter() if args.risk_says_low else None
     print(f"\npolicy {policy.version} requires these constraints to be PRESENT:")
     print(f"  {', '.join(sorted(required)) or '(nothing)'}")
 
@@ -532,6 +545,7 @@ def cmd_chain(args: argparse.Namespace) -> int:
             required=required,
             nonces=nonces,
             ledger=ledger,
+            risk=risk,
         )
         _ledger_note(args.ledger)
         print()
@@ -545,6 +559,7 @@ def cmd_chain(args: argparse.Namespace) -> int:
         required=required,
         nonces=nonces,
         ledger=ledger,
+        risk=risk,
     )
     code, withheld = _chain_act(
         "2. SPENDING CAP WITHHELD, CHARGE OVER THE CAP",
@@ -554,6 +569,7 @@ def cmd_chain(args: argparse.Namespace) -> int:
         required=required,
         nonces=nonces,
         ledger=ledger,
+        risk=risk,
     )
     _chain_act(
         "3. THE SAME PRESENTATION, REPLAYED",
@@ -563,6 +579,7 @@ def cmd_chain(args: argparse.Namespace) -> int:
         required=required,
         nonces=nonces,
         ledger=ledger,
+        risk=risk,
         replay_of=withheld,
     )
     print(
@@ -724,6 +741,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--withhold",
         action="store_true",
         help="withhold the spending cap from the presentation",
+    )
+    chain.add_argument(
+        "--risk-says-low",
+        action="store_true",
+        help="attach a mock Vulcan-class scorer that returns LOW",
     )
     chain.add_argument(
         "--ledger",
