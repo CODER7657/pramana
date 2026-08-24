@@ -30,7 +30,7 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Tests](https://img.shields.io/badge/tests-670%20passing-brightgreen.svg)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)](POSTMORTEM.md)
+[![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen.svg)](POSTMORTEM.md)
 
 > **We found two defects in Google's AP2 reference implementation while building
 > against it.** Google confirmed the mechanism, classified it as intended
