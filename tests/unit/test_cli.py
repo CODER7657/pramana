@@ -488,9 +488,11 @@ class TestReadmeNumbersAreTrue:
         from bench.runner import run as run_benchmark  # noqa: PLC0415
 
         quotable = re.compile(
-            r"attacks allowed\)"          # the two ASR lines
-            r"|^\s+(baseline|PRAMANA)\s+:"  # the two FPR lines
-            r"|^\s+RC-\d\s+\d+/\d+"       # the per-class table rows
+            r"attacks allowed\)"                  # the two ASR lines
+            r"|^\s+(baseline|PRAMANA)\s+:"         # the two FPR lines
+            r"|^\s+RC-\d\s+\d+/\d+"               # the per-class table rows
+            r"|^\s+(baseline|PRAMANA)\s+\d"        # the precision/recall rows
+            r"|^\s+(omitted-obligation|comparable)\s+:"  # the decomposition
         )
         rendered = [
             line.rstrip()

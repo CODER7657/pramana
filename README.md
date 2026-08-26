@@ -29,7 +29,7 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-671%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-679%20passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen.svg)](POSTMORTEM.md)
 
 > **We found two defects in Google's AP2 reference implementation while building
@@ -393,7 +393,7 @@ in a dispute can recompute the hash from the same facts in a different language.
 ## Status
 
 Honest, and updated as it changes. First build session, 2026-08-23.
-**671 tests**, all green. That number is asserted by a test, so it cannot drift.
+**679 tests**, all green. That number is asserted by a test, so it cannot drift.
 
 | Component | State |
 | --- | --- |
@@ -469,6 +469,39 @@ pramana bench
   ATTACK-SUCCESS RATE (structural classes only; lower is better)
     baseline (presence-driven) : 53.8%  (7/13 attacks allowed)
     PRAMANA                    : 0.0%  (0/13 attacks allowed)
+
+  PRECISION / RECALL  (positive class = attack)
+                  TP  FP  FN  TN   precision   recall
+    baseline       6   0   7   8       1.000    0.462
+    PRAMANA       13   0   0   8       1.000    1.000
+
+  DO NOT QUOTE THAT ROW ON ITS OWN
+  --------------------------------
+  PRAMANA scores 1.0 / 1.0 against a suite its own authors
+  wrote. That is what a self-authored corpus scores when the code
+  works, and it is not evidence. Split the attacks and it says
+  something a reader can actually use:
+
+    omitted-obligation : 7 case(s)   baseline refused 0/7   PRAMANA refused 7/7
+      -> the constraint was never disclosed. The baseline cannot
+         require what it was not shown, and coverage synthesises
+         INDETERMINATE for a declared id that never reported. The
+         delta here is an IDENTITY, not a measurement. What it
+         measures is the coverage invariant working.
+
+    comparable         : 6 case(s)   baseline refused 6/6   PRAMANA refused 6/6
+      -> a constraint is present and violated, or a regulatory
+         fact fails. Both verifiers do the same work here, so a
+         difference WOULD be a real result. There is none.
+
+  The honest one-line summary:
+    On the cases where both verifiers do comparable work, PRAMANA
+    and a presence-driven baseline are INDISTINGUISHABLE. The
+    entire delta is the coverage invariant.
+
+  And the corpus is not held out. `pramana cost` says so at length;
+  the same party wrote the cases and the gate, so a case nobody
+  thought of is a case nobody wrote.
 
   FALSE-POSITIVE RATE (legitimate traffic wrongly rejected)
     baseline : 0.0% (0/8)

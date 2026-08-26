@@ -170,3 +170,79 @@ class TestReporting:
     def test_per_class_table_is_populated(self) -> None:
         table = REPORT.asr_by_class(pramana=False)
         assert set(table) >= {"RC-2", "RC-3", "RC-4", "RC-5"}
+
+
+class TestPrecisionAndRecall:
+    """Track 2 asks for precision and recall in those words. So they exist.
+
+    Every assertion here is also a guard against the number being quoted
+    without its decomposition, because 1.0/1.0 on a self-authored suite is
+    what working code scores, not evidence that it works.
+    """
+
+    def test_the_confusion_matrix_accounts_for_every_case(self) -> None:
+        attacks = [o for o in REPORT.outcomes if o.is_attack]
+        legitimate = [o for o in REPORT.outcomes if not o.is_attack]
+        for pramana in (True, False):
+            m = REPORT.confusion(pramana=pramana)
+            assert m["tp"] + m["fn"] == len(attacks)
+            assert m["fp"] + m["tn"] == len(legitimate)
+            assert sum(m.values()) == len(REPORT.outcomes)
+
+    def test_pramana_refuses_every_attack_and_no_legitimate_case(self) -> None:
+        m = REPORT.confusion(pramana=True)
+        assert m["fn"] == 0, "an attack was allowed"
+        assert m["fp"] == 0, "a legitimate case was refused"
+        assert REPORT.precision(pramana=True) == 1.0
+        assert REPORT.recall(pramana=True) == 1.0
+
+    def test_the_baseline_has_perfect_precision_and_poor_recall(self) -> None:
+        """The shape of the gap, stated as a property rather than a sentence.
+
+        The baseline is not *wrong* about what it refuses -- everything it
+        refuses deserves it. It simply cannot see the attacks where the
+        constraint was never disclosed, so it misses more than half of them.
+        If this ever reads 1.0 recall, the baseline stopped being a baseline.
+        """
+        assert REPORT.precision(pramana=False) == 1.0
+        assert REPORT.recall(pramana=False) < 0.6
+
+    def test_the_decomposition_partitions_the_attacks_exactly(self) -> None:
+        split = REPORT.decomposition()
+        omitted = set(split["omitted_obligation"]["case_ids"])
+        comparable = set(split["comparable"]["case_ids"])
+        attacks = {o.case_id for o in REPORT.outcomes if o.is_attack}
+        assert omitted & comparable == set(), "a case is in both halves"
+        assert omitted | comparable == attacks, "a case is in neither half"
+
+    def test_the_two_verifiers_agree_on_every_comparable_case(self) -> None:
+        """The claim that should be quoted instead of the 1.0.
+
+        Where a constraint is present and violated, both verifiers do the same
+        work. If PRAMANA ever beat the baseline here it would be a real
+        result -- and this test would need rewriting rather than deleting.
+        """
+        comparable = REPORT.decomposition()["comparable"]
+        assert comparable["cases"] > 0
+        assert comparable["baseline_refused"] == comparable["pramana_refused"]
+
+    def test_the_delta_is_entirely_the_omitted_obligation_half(self) -> None:
+        omitted = REPORT.decomposition()["omitted_obligation"]
+        assert omitted["baseline_refused"] == 0
+        assert omitted["pramana_refused"] == omitted["cases"]
+
+    def test_the_render_refuses_to_show_the_number_bare(self) -> None:
+        text = REPORT.render()
+        assert "PRECISION / RECALL" in text
+        assert "DO NOT QUOTE THAT ROW ON ITS OWN" in text
+        assert "IDENTITY, not a measurement" in text
+        assert "INDISTINGUISHABLE" in text
+        assert "not held out" in text
+
+    def test_the_json_payload_carries_both_the_number_and_the_split(self) -> None:
+        payload = REPORT.to_dict()
+        assert payload["precision_pramana"] == 1.0
+        assert payload["recall_pramana"] == 1.0
+        assert payload["recall_baseline"] < 1.0
+        assert payload["decomposition"]["comparable"]["cases"] > 0
+        assert payload["confusion_pramana"]["fn"] == 0

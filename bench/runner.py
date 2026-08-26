@@ -145,6 +145,82 @@ class BenchReport:
         )
         return blocked / len(legitimate)
 
+    def confusion(self, *, pramana: bool) -> dict[str, int]:
+        """TP / FP / FN / TN, treating "attack" as the positive class.
+
+        Reported because Track 2 asks for precision and recall in those words,
+        and answering a rubric in its own vocabulary is not optional. The
+        numbers are trivially derived from what the ASR/FPR columns already
+        contain -- which is the point: nothing new is being measured here, it
+        is the same 21 outcomes counted a second way.
+        """
+        def allowed(outcome: CaseOutcome) -> bool:
+            return outcome.pramana_allowed if pramana else outcome.baseline_allowed
+
+        attacks = self._attacks(structural_only=True)
+        legitimate = self._legitimate()
+        return {
+            "tp": sum(1 for o in attacks if not allowed(o)),
+            "fn": sum(1 for o in attacks if allowed(o)),
+            "fp": sum(1 for o in legitimate if not allowed(o)),
+            "tn": sum(1 for o in legitimate if allowed(o)),
+        }
+
+    def precision(self, *, pramana: bool) -> float:
+        """Of everything refused, the fraction that deserved refusing."""
+        m = self.confusion(pramana=pramana)
+        denominator = m["tp"] + m["fp"]
+        return m["tp"] / denominator if denominator else 0.0
+
+    def recall(self, *, pramana: bool) -> float:
+        """Of every attack, the fraction refused."""
+        m = self.confusion(pramana=pramana)
+        denominator = m["tp"] + m["fn"]
+        return m["tp"] / denominator if denominator else 0.0
+
+    def decomposition(self) -> dict[str, Any]:
+        """Split the attack set into the part that measures and the part that does not.
+
+        This is the number that should be quoted, and it exists because the one
+        the rubric asks for is misleading on its own.
+
+        An *omitted-obligation* case is one where the presentation withheld a
+        constraint the policy declares. The baseline allows it **by
+        construction** -- its policy only declares what was disclosed, so
+        nothing is missing -- and PRAMANA refuses it **by construction**, since
+        coverage synthesises INDETERMINATE for the declared id that never
+        reported. For those cases the difference between the two columns is an
+        identity, not a measurement, and what it measures is the coverage
+        invariant working.
+
+        A *comparable* case is one where a constraint is present and violated,
+        or a regulatory fact fails. Both verifiers do the same work, and any
+        difference there would be a real result. There is none: they agree.
+
+        So the honest sentence is: on the cases where both verifiers do
+        comparable work we are indistinguishable from a presence-driven
+        baseline, and the entire delta is the coverage invariant.
+        """
+        attacks = self._attacks(structural_only=True)
+        omitted = tuple(o for o in attacks if o.newly_caught)
+        comparable = tuple(o for o in attacks if not o.newly_caught)
+        return {
+            "omitted_obligation": {
+                "cases": len(omitted),
+                "baseline_refused": sum(1 for o in omitted if not o.baseline_allowed),
+                "pramana_refused": sum(1 for o in omitted if not o.pramana_allowed),
+                "case_ids": [o.case_id for o in omitted],
+            },
+            "comparable": {
+                "cases": len(comparable),
+                "baseline_refused": sum(
+                    1 for o in comparable if not o.baseline_allowed
+                ),
+                "pramana_refused": sum(1 for o in comparable if not o.pramana_allowed),
+                "case_ids": [o.case_id for o in comparable],
+            },
+        }
+
     def asr_by_class(self, *, pramana: bool) -> dict[str, tuple[int, int]]:
         """Per class: (attacks allowed, attacks total)."""
         table: dict[str, tuple[int, int]] = {}
@@ -184,6 +260,13 @@ class BenchReport:
             "asr_pramana": round(self.asr(pramana=True), 4),
             "fpr_baseline": round(self.false_positive_rate(pramana=False), 4),
             "fpr_pramana": round(self.false_positive_rate(pramana=True), 4),
+            "precision_baseline": round(self.precision(pramana=False), 4),
+            "recall_baseline": round(self.recall(pramana=False), 4),
+            "precision_pramana": round(self.precision(pramana=True), 4),
+            "recall_pramana": round(self.recall(pramana=True), 4),
+            "confusion_baseline": self.confusion(pramana=False),
+            "confusion_pramana": self.confusion(pramana=True),
+            "decomposition": self.decomposition(),
             "asr_by_class_baseline": self.asr_by_class(pramana=False),
             "asr_by_class_pramana": self.asr_by_class(pramana=True),
             "latency_p50_ms": round(self.latency_p(0.50), 3),
@@ -238,6 +321,59 @@ class BenchReport:
             f"/{len(structural)} attacks allowed)",
         ]
 
+    def _render_precision_recall(self) -> list[str]:
+        """The rubric's number, immediately followed by the reason not to trust it."""
+        m = self.confusion(pramana=True)
+        base = self.confusion(pramana=False)
+        split = self.decomposition()
+        omitted, comparable = split["omitted_obligation"], split["comparable"]
+
+        return [
+            "  PRECISION / RECALL  (positive class = attack)",
+            f"    {'':<12}{'TP':>4}{'FP':>4}{'FN':>4}{'TN':>4}"
+            f"{'precision':>12}{'recall':>9}",
+            f"    {'baseline':<12}{base['tp']:>4}{base['fp']:>4}"
+            f"{base['fn']:>4}{base['tn']:>4}"
+            f"{self.precision(pramana=False):>12.3f}"
+            f"{self.recall(pramana=False):>9.3f}",
+            f"    {'PRAMANA':<12}{m['tp']:>4}{m['fp']:>4}{m['fn']:>4}{m['tn']:>4}"
+            f"{self.precision(pramana=True):>12.3f}"
+            f"{self.recall(pramana=True):>9.3f}",
+            "",
+            "  DO NOT QUOTE THAT ROW ON ITS OWN",
+            "  " + "-" * 32,
+            f"  PRAMANA scores {self.precision(pramana=True):.1f} / "
+            f"{self.recall(pramana=True):.1f} against a suite its own authors",
+            "  wrote. That is what a self-authored corpus scores when the code",
+            "  works, and it is not evidence. Split the attacks and it says",
+            "  something a reader can actually use:",
+            "",
+            f"    omitted-obligation : {omitted['cases']} case(s)   "
+            f"baseline refused {omitted['baseline_refused']}/{omitted['cases']}"
+            f"   PRAMANA refused {omitted['pramana_refused']}/{omitted['cases']}",
+            "      -> the constraint was never disclosed. The baseline cannot",
+            "         require what it was not shown, and coverage synthesises",
+            "         INDETERMINATE for a declared id that never reported. The",
+            "         delta here is an IDENTITY, not a measurement. What it",
+            "         measures is the coverage invariant working.",
+            "",
+            f"    comparable         : {comparable['cases']} case(s)   "
+            f"baseline refused {comparable['baseline_refused']}/{comparable['cases']}"
+            f"   PRAMANA refused {comparable['pramana_refused']}/{comparable['cases']}",
+            "      -> a constraint is present and violated, or a regulatory",
+            "         fact fails. Both verifiers do the same work here, so a",
+            "         difference WOULD be a real result. There is none.",
+            "",
+            "  The honest one-line summary:",
+            "    On the cases where both verifiers do comparable work, PRAMANA",
+            "    and a presence-driven baseline are INDISTINGUISHABLE. The",
+            "    entire delta is the coverage invariant.",
+            "",
+            "  And the corpus is not held out. `pramana cost` says so at length;",
+            "  the same party wrote the cases and the gate, so a case nobody",
+            "  thought of is a case nobody wrote.",
+        ]
+
     def render(self) -> str:
         lines: list[str] = []
         add = lines.append
@@ -247,6 +383,8 @@ class BenchReport:
         lines.extend(self._render_header())
         add("")
         lines.extend(self._render_rates())
+        add("")
+        lines.extend(self._render_precision_recall())
         add("")
         add("  FALSE-POSITIVE RATE (legitimate traffic wrongly rejected)")
         add(f"    baseline : {self.false_positive_rate(pramana=False):.1%} "
