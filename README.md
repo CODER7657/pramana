@@ -29,7 +29,7 @@ the type system, not by convention. See [ADR-0001](docs/adr/0001-deterministic-m
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-679%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-691%20passing-brightgreen.svg)](tests/)
 [![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen.svg)](POSTMORTEM.md)
 
 > **We found two defects in Google's AP2 reference implementation while building
@@ -393,7 +393,7 @@ in a dispute can recompute the hash from the same facts in a different language.
 ## Status
 
 Honest, and updated as it changes. First build session, 2026-08-23.
-**679 tests**, all green. That number is asserted by a test, so it cannot drift.
+**691 tests**, all green. That number is asserted by a test, so it cannot drift.
 
 | Component | State |
 | --- | --- |
@@ -542,6 +542,50 @@ costs 22 ms at depth 2000. That is an open item, not a measured claim.
 wrote the gate; 0% ASR against a suite authored by the defence's own authors is a
 consistency check, not an independent result. `pramana bench` prints that caveat
 every time, and a test asserts it cannot be dropped.
+
+### A test set sealed before it was run
+
+Track 2 asks for precision and recall on a **held-out** test set. We do not have
+one and will not pretend otherwise: the same party wrote the gate and every case it
+has been measured against, and [AIP-Bench](https://arxiv.org/abs/2607.21824) releases
+its artifacts on 2026-10-04, after the deadline.
+
+This is the closest honest substitute, and it is a **method** rather than a number.
+Seventeen cases in [`bench/prereg.py`](bench/prereg.py) were written from the RBI
+*E-mandate Framework, 2026* by reading the provisions and asking what the regulation
+requires — not by reading `rbi.py` and asking what it does. Each records its provision
+and the outcome the regulation demands.
+
+Then they were **committed with no runner**, in
+[`9d0994a`](https://github.com/CODER7657/pramana/commit/9d0994a), and only afterwards
+executed. `git log --follow bench/prereg.py` is the evidence, and a test asserts that
+file still has exactly one commit — if an expectation is ever edited, the claim on this
+page stops being true and CI says so.
+
+```bash
+pramana prereg
+```
+
+```
+  cases      : 17
+  agreed     : 17
+  disagreed  : 0
+
+  PRECISION / RECALL on this set (positive class = the regulation
+  requires refusal)
+    TP 7   FP 0   FN 0   TN 10
+    precision 1.000   recall 1.000
+```
+
+Three of the seventeen were genuine boundary risks — a debit of *exactly* ₹15,000, a
+notice sent at *exactly* 24 hours, and a debit attempted *before* a mandate's validity
+begins rather than after it ends. All three decided the way the regulation reads.
+
+**What this establishes and what it does not.** Fixing the expectations before execution
+rules out tuning them to whatever the code produced. It does **not** make the set blind:
+the same person wrote the cases and the gate, so this is pre-registration, not blinding.
+A genuinely held-out set needs a different author or production traffic. The tool says
+so in its own output, every run.
 
 ### The false-positive side, in rupees
 

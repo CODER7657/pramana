@@ -82,6 +82,12 @@ jobs:
           fi
           echo "fail-closed exit code confirmed"
 
+      - name: Pre-registered set still agrees with the regulation
+        # Sealed in 9d0994a with no runner. A disagreement means the gate
+        # drifted from a reading of the RBI framework fixed before the code
+        # was consulted -- a finding either way, so it stops the build.
+        run: pramana prereg
+
       - name: Coverage badge matches measured coverage
         # Runs after the test step, which wrote the .coverage data. Coverage
         # went 95.1% -> 94.3% when the adapter, the corpus and the

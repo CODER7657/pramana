@@ -791,6 +791,21 @@ def cmd_cost(args: argparse.Namespace) -> int:
     return 0 if refused == 0 else 1
 
 
+def cmd_prereg(_: argparse.Namespace) -> int:
+    """Run the pre-registered set and print it unedited.
+
+    Exits non-zero on any disagreement between the gate and the reading of the
+    regulation the cases were sealed with. That is deliberate: a disagreement
+    is a finding, not a formatting problem, and CI should go red until it has
+    been resolved one way or the other.
+    """
+    from bench.prereg_run import render, run_prereg, summary  # noqa: PLC0415
+
+    outcomes = run_prereg()
+    print(console_safe(render(outcomes)))
+    return 0 if summary(outcomes)["disagreed"] == 0 else 1
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     """Emit a verdict as canonical JSON, for piping into other tools."""
     verdict = _withheld_constraint() if args.withhold else _legitimate()
@@ -845,6 +860,11 @@ def build_parser() -> argparse.ArgumentParser:
         "cost", help="false-positive cost of the shipped policy, in rupees"
     )
     cost.set_defaults(func=cmd_cost)
+
+    prereg = sub.add_parser(
+        "prereg", help="run the pre-registered (sealed-before-execution) test set"
+    )
+    prereg.set_defaults(func=cmd_prereg)
 
     verify = sub.add_parser("verify", help="emit a verdict as canonical JSON")
     verify.add_argument(
