@@ -73,7 +73,7 @@ cases and we wrote the gate.
 
 ## What broke
 
-Twenty-seven defects, grouped by how they were found. The pattern worth noting: **not
+Twenty-eight defects, grouped by how they were found. The pattern worth noting: **not
 one of these came from writing more code. Every one came from running something
 against reality.**
 
@@ -229,6 +229,43 @@ One review claim did **not** reproduce: coverage was reported as 96% against a
 95% badge. Measured at `--precision=1` it is **95.1%**, so the badge was right
 and the correction was wrong. Verifying before acting has now caught two of
 these across three reviews, which is the entire reason for the habit.
+
+### Found by a stranger on our own issue (1)
+
+Someone we have never met read AP2#339 and pointed out that
+`check_payment_constraints` already contains a required-presence assertion —
+when `AgentRecurrence` is present it demands `payment.budget` and
+`payment.amount_range` and reports a violation if either is missing. They were
+right, we had not found it, and "AP2 evaluates only what is disclosed" was too
+broad as we had written it.
+
+Reproduced before believing it, per the usual rule, and the result is a better
+finding than the one we filed:
+
+```
+cap INR 5,000, charge INR 7,500
+  budget + recurrence + range   -> BLOCKED   budget evaluator
+  budget WITHHELD, recurrence   -> BLOCKED   the presence assertion fires
+  budget + recurrence WITHHELD  -> ALLOWED   nothing left to fire
+```
+
+The assertion is triggered by a constraint that sits in the same
+selectively-disclosable array as the one it protects. Withhold one more entry
+and the check that would have caught you never runs. **A presence assertion
+whose own trigger is withholdable is a presence assertion an adversary opts out
+of** — which is a tighter argument for the coverage invariant than anything we
+wrote ourselves, because the requirement has to come from the *verifier's*
+policy rather than from the presentation being examined.
+
+The same commenter noted that `check_payment_constraints` returns `list[str]`,
+so an empty list means either "everything was evaluated and satisfied" or
+"nothing was evaluated" — and suggested returning the set of constraints
+actually evaluated alongside the violations. That is our coverage invariant,
+arrived at independently, by someone reading the SDK rather than our code.
+
+Recorded here because the defect count in this file is a count of things we got
+wrong, and being too broad in a public claim is one of them.
+[`scripts/spike_recurrence.py`](scripts/spike_recurrence.py) is the reproduction.
 
 ### Found by our own tests, in our own tests (3)
 

@@ -416,7 +416,7 @@ Honest, and updated as it changes. First build session, 2026-08-23.
 | Frozen attack benchmark (RC-1..RC-5) | **Built**. RC-6 is out of scope by design — see below |
 | FastAPI gate (fail-closed status codes) | **Built** |
 
-Every defect found during the build is recorded in [POSTMORTEM.md](POSTMORTEM.md) — twenty-seven of them, with measured latency, cost per decision, and what we would fix next.
+Every defect found during the build is recorded in [POSTMORTEM.md](POSTMORTEM.md) — twenty-eight of them, with measured latency, cost per decision, and what we would fix next.
 
 Nothing above is claimed as working that is not. Where a number appears in this README, it
 was measured; where a design is described but unbuilt, it says so.
@@ -836,6 +836,27 @@ Following the vendor's suggestion, both findings are now public upstream:
 
 1. **Presence-driven constraint evaluation** — a withheld constraint is indistinguishable
    from a satisfied one. ([ADR-0003](docs/adr/0003-absent-constraint-is-not-consent.md))
+
+   **Refined by a commenter on AP2#339, and they were right.** `check_payment_constraints`
+   is *not* purely presence-driven: when an `AgentRecurrence` constraint is present it
+   asserts that `payment.budget` and `payment.amount_range` must be too, and reports a
+   violation when they are not. We had not found that, and it is the same pattern this
+   project argues for.
+
+   Where it stops is the sharper finding. That assertion is **triggered by**
+   `AgentRecurrence`, which lives in the same `constraints` array and is therefore just
+   as withholdable as the cap it protects.
+   [`scripts/spike_recurrence.py`](scripts/spike_recurrence.py):
+
+   ```
+   budget + recurrence + range   -> BLOCKED   budget evaluator
+   budget WITHHELD, recurrence   -> BLOCKED   the presence assertion fires
+   budget + recurrence WITHHELD  -> ALLOWED   nothing left to fire
+   ```
+
+   **A presence assertion whose own trigger is withholdable is one an adversary opts
+   out of.** A holder who withholds the cap is caught; a holder who withholds the cap
+   and the marker is not.
 2. **Undocumented unit mismatch between `Budget.max` and `AmountRange.max`** — an issuer
    following the SDK's own documentation can create a spending cap 100× larger than
    intended.
