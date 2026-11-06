@@ -1,12 +1,17 @@
 """Vercel entry point. The gateway is built by its own deployment factory, so the
 API, CLI and benchmark keep sharing one construction path. Vercel's filesystem is
-read-only except /tmp, so the demo ledger lives there (it resets with the instance).
+read-only except the temp directory, so the demo ledger lives there (it resets with
+the instance).
 """
 
 import os
+import tempfile
+from pathlib import Path
 
-os.environ.setdefault("PRAMANA_LEDGER", "/tmp/pramana-ledger.jsonl")
+from pramana.gateway.app import default_app
 
-from pramana.gateway.app import default_app  # noqa: E402
+LEDGER = Path(tempfile.gettempdir()) / "pramana-ledger.jsonl"
+# default_app() reads PRAMANA_LEDGER when called, not when imported.
+os.environ.setdefault("PRAMANA_LEDGER", str(LEDGER))
 
 app = default_app()
