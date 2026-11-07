@@ -5,87 +5,109 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PRAMANA · Verification gate for agent payments</title>
 <meta name="description" content="A deterministic verification gate between AI shopping agents and payment. Send a scenario and see the verdict, the blocking obligations and the evidence.">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#EDEAE3">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap">
 <style>
   :root {
-    --bg: #ffffff; --panel: #f7f8fa; --line: #e3e6eb; --ink: #0f172a; --muted: #5b6474;
-    --accent: #1e3a8a; --accent-soft: #eef2fb;
-    --allow: #166534; --allow-bg: #f0f7f2; --reject: #9b1c1c; --reject-bg: #fbf1f1;
-    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
-    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --paper: #EDEAE3; --surface: #F7F6F2; --ink: #1A1A1A; --muted: #5C5A55;
+    --rule: rgba(26,26,26,.14); --grid: rgba(26,26,26,.04);
+    --reject: #E0201B; --allow: #1F6B3A; --focus: #1A1A1A;
+    --display: "Inter Tight", "Helvetica Neue", Arial, sans-serif;
+    --ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+    --gutter: clamp(16px, 3vw, 32px);
     color-scheme: light;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
-  body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
-  a { color: var(--accent); text-underline-offset: 3px; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  body { background: var(--paper); color: var(--ink); font: 400 15px/1.55 var(--ui); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; overflow-x: hidden; }
+  a { color: var(--ink); text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .wrap { position: relative; max-width: 1280px; margin: 0 auto; padding: 0 var(--gutter); }
 
-  .top { border-bottom: 1px solid var(--line); }
-  .top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 56px; }
-  .brand { font-weight: 700; letter-spacing: .14em; font-size: 13px; }
-  .brand span { color: var(--muted); font-weight: 500; letter-spacing: .02em; margin-left: 10px; }
-  .top nav { display: flex; gap: 20px; font-size: 14px; }
-  .top nav a { color: var(--muted); text-decoration: none; white-space: nowrap; }
-  @media (max-width: 560px) { .brand span { display: none; } .top nav { gap: 14px; } }
-  .top nav a:hover { color: var(--ink); }
+  /* 12-column grid rules: desktop only, 4% ink. */
+  .grid { display: none; }
+  @media (min-width: 960px) {
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); position: absolute; top: 0; bottom: 0; left: var(--gutter); right: var(--gutter); pointer-events: none; }
+    .grid span { border-left: 1px solid var(--grid); }
+    .grid span:last-child { border-right: 1px solid var(--grid); }
+  }
+  .cols { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 16px; }
 
-  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 20px; }
-  header.intro { padding: 40px 0 28px; display: grid; gap: 14px; max-width: 760px; }
-  .kicker { font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
-  h1 { font-size: clamp(26px, 3.4vw, 36px); line-height: 1.15; letter-spacing: -.015em; margin: 0; font-weight: 700; }
-  .intro p { margin: 0; color: var(--muted); font-size: 16px; }
-  .facts { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: var(--muted); }
-  .facts b { color: var(--ink); font-weight: 600; }
+  .label { font: 500 11px/1.4 var(--ui); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; display: block; }
 
-  .layout { display: grid; gap: 20px; grid-template-columns: 1fr; padding-bottom: 56px; }
-  @media (min-width: 960px) { .layout { grid-template-columns: 320px minmax(0, 1fr); } }
+  .top { border-bottom: 1px solid var(--rule); }
+  .top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; }
+  .brand { font: 700 12px var(--display); letter-spacing: .24em; white-space: nowrap; }
+  .brand span { color: var(--muted); font: 400 12px var(--ui); letter-spacing: .02em; margin-left: 14px; }
+  .top nav { display: flex; gap: 8px; font-size: 13px; }
+  .top nav a { color: var(--muted); text-decoration: none; white-space: nowrap; padding: 12px 6px; }
+  .top nav a:hover { color: var(--ink); text-decoration: underline; }
+  @media (max-width: 560px) { .brand span { display: none; } .top nav { gap: 2px; } }
 
-  .label { font: 600 12px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
-  .cases { display: grid; gap: 8px; align-content: start; }
-  .case { display: grid; gap: 2px; text-align: left; width: 100%; padding: 12px 14px; border: 1px solid var(--line); background: var(--bg); color: inherit; font: inherit; border-radius: 6px; cursor: pointer; transition: border-color .15s, background .15s; }
-  .case:hover { border-color: #c9ced6; }
-  .case[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
-  .case .t { font-weight: 600; font-size: 14px; }
-  .case .n { font-size: 13px; color: var(--muted); }
-  .case .x { font: 600 11px var(--mono); color: var(--muted); }
+  header.intro { padding: clamp(40px, 8vw, 96px) 0 clamp(32px, 5vw, 56px); }
+  header.intro .head { grid-column: 1 / -1; }
+  h1 { font: 700 clamp(34px, 6vw, 72px)/0.98 var(--display); letter-spacing: -.02em; margin: 0; }
+  .lede { grid-column: 1 / -1; margin: 24px 0 0; max-width: 52ch; color: var(--muted); font-size: 16px; }
+  .meta { grid-column: 1 / -1; margin: 28px 0 0; padding: 0; list-style: none; font: 400 11px/1.9 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  .meta b { color: var(--ink); font-weight: 400; }
+  @media (min-width: 960px) {
+    header.intro .head { grid-column: 1 / 9; grid-row: 1 / 3; }
+    .meta { grid-column: 10 / 13; grid-row: 1; margin: 6px 0 0; }
+    .lede { grid-column: 1 / 7; grid-row: 3; }
+  }
 
-  .card { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); min-width: 0; }
-  .card + .card { margin-top: 16px; }
-  .card .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); border-radius: 8px 8px 0 0; }
-  .card .head h2 { font-size: 14px; margin: 0; font-weight: 600; }
-  .card .body { padding: 16px; }
-  .endpoint { font: 13px var(--mono); color: var(--muted); }
-  .endpoint b { color: var(--ink); font-weight: 600; }
+  .block { position: relative; padding: 0 0 clamp(32px, 5vw, 56px); }
+  .block > .label { padding-top: 16px; border-top: 1px solid var(--ink); }
 
-  textarea { width: 100%; min-height: 260px; resize: vertical; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); padding: 12px; font: 12.5px/1.5 var(--mono); }
-  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
-  .btn { appearance: none; border: 1px solid var(--accent); background: var(--accent); color: #fff; font: 600 14px var(--sans); padding: 10px 18px; min-height: 42px; border-radius: 6px; cursor: pointer; }
-  .btn:hover { background: #172e6e; }
-  .btn[disabled] { opacity: .6; cursor: progress; }
-  .btn.ghost { background: var(--bg); color: var(--ink); border-color: var(--line); }
+  .cases { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; column-gap: 16px; }
+  @media (min-width: 960px) { .cases { grid-template-columns: repeat(2, 1fr); } }
+  .case { display: grid; grid-template-columns: 40px 1fr auto; column-gap: 8px; align-items: baseline; text-align: left; width: 100%; min-height: 56px; padding: 12px 12px 12px 14px; border: 0; border-left: 2px solid transparent; border-bottom: 1px solid var(--rule); border-radius: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; transition: opacity 120ms; }
+  .case:hover { border-left-color: var(--rule); }
+  .case[aria-pressed="true"] { border-left-color: var(--ink); }
+  .case .num { font: 400 13px var(--mono); color: var(--muted); grid-row: 1 / 3; }
+  .case .t { font: 600 15px var(--display); }
+  .case .n { grid-column: 2 / 4; grid-row: 2; font-size: 13px; color: var(--muted); }
+  .case .x { grid-column: 3; grid-row: 1; white-space: nowrap; font: 400 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+  .panes { display: grid; grid-template-columns: 1fr; gap: 40px 16px; }
+  @media (min-width: 960px) { .panes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .pane { min-width: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 2px; padding: clamp(16px, 2.2vw, 28px); }
+  .pane .hd { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .pane .hd .label { margin: 0; }
+  .endpoint { font: 400 12px var(--mono); color: var(--muted); }
+  .endpoint b { color: var(--ink); font-weight: 400; }
+
+  textarea { display: block; width: 100%; min-height: 300px; resize: vertical; border: 1px solid var(--rule); border-radius: 2px; background: var(--paper); color: var(--ink); padding: 12px; font: 400 12.5px/1.55 var(--mono); }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
+  .btn { appearance: none; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); font: 500 14px var(--ui); letter-spacing: .02em; padding: 0 22px; min-height: 44px; border-radius: 2px; cursor: pointer; transition: opacity 120ms; }
+  .btn:hover { opacity: .85; }
+  .btn[disabled] { opacity: .5; cursor: progress; }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--rule); }
+  .btn.ghost:hover { border-color: var(--ink); opacity: 1; }
   .hint { font-size: 13px; color: var(--muted); }
-  .error { color: var(--reject); font-size: 13px; }
+  .error { color: var(--ink); font-size: 13px; border-left: 2px solid var(--reject); padding-left: 8px; }
 
-  .verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 16px; border-radius: 6px; }
-  .verdict.allow { background: var(--allow-bg); }
-  .verdict.reject { background: var(--reject-bg); }
-  .verdict .badge { font: 700 13px var(--mono); letter-spacing: .04em; padding: 4px 10px; border-radius: 4px; color: #fff; }
-  .allow .badge { background: var(--allow); }
-  .reject .badge { background: var(--reject); }
-  .verdict .what { font-weight: 600; }
-  .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin: 14px 0; }
-  .metrics div { background: var(--bg); padding: 10px 12px; }
-  .metrics dt { font: 600 11px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
-  .metrics dd { margin: 2px 0 0; font: 600 15px var(--mono); overflow-wrap: anywhere; }
-  .blocking { margin: 0 0 14px; padding: 0; list-style: none; display: grid; gap: 6px; }
-  .blocking li { font: 13px var(--mono); padding: 8px 10px; border: 1px solid #ecd3d3; background: var(--reject-bg); border-radius: 4px; }
-  details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
-  pre { margin: 10px 0 0; max-height: 380px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; font: 12px/1.5 var(--mono); }
-  .empty { color: var(--muted); font-size: 14px; }
+  .verdict { padding: 0 0 16px; border-bottom: 1px solid var(--rule); }
+  .verdict .badge { display: block; font: 700 clamp(28px, 4vw, 48px)/1.02 var(--display); letter-spacing: -.02em; }
+  .verdict.allow .badge { color: var(--allow); }
+  .verdict.reject .badge { color: var(--reject); }
+  .verdict .what { display: block; margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 16px 0 24px; }
+  .metrics dt { font: 500 11px var(--ui); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .metrics dd { margin: 4px 0 0; font: 400 14px var(--mono); overflow-wrap: anywhere; }
+  .blocking { margin: 0 0 24px; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .blocking li { font: 400 13px/1.5 var(--mono); display: flex; gap: 10px; overflow-wrap: anywhere; }
+  .blocking .sq { color: var(--reject); }
+  details summary { cursor: pointer; font-size: 13px; color: var(--muted); min-height: 44px; display: flex; align-items: center; }
+  pre { margin: 4px 0 0; max-height: 380px; overflow: auto; background: var(--paper); border: 1px solid var(--rule); border-radius: 2px; padding: 12px; font: 400 12px/1.5 var(--mono); }
+  .empty { color: var(--muted); font-size: 14px; margin: 0; }
 
-  footer { border-top: 1px solid var(--line); padding: 20px 0 32px; font-size: 13px; color: var(--muted); }
-  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; }
+  footer { border-top: 1px solid var(--rule); padding: 20px 0 32px; font-size: 12px; color: var(--muted); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+  footer a { color: var(--ink); }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -99,44 +121,51 @@
   </nav>
 </div></div>
 
-<main class="wrap">
-  <header class="intro">
-    <div class="kicker">Agent payments · RBI e-mandate rules</div>
-    <h1>Every obligation must have been checked, or the payment does not go through.</h1>
-    <p>PRAMANA sits between an AI shopping agent and checkout. It reaches a verdict without any model on the money path. An obligation that was never evaluated blocks exactly as hard as one that failed.</p>
-    <div class="facts"><span><b>200</b> allow</span><span><b>403</b> reject</span><span><b>691</b> tests</span><span><b>~2 ms</b> per verdict</span></div>
+<div class="wrap">
+  <div class="grid" id="grid" aria-hidden="true"></div>
+
+  <header class="intro cols">
+    <div class="head">
+      <p class="label">Agent payments · RBI e-mandate rules</p>
+      <h1>Every obligation checked, or no payment.</h1>
+    </div>
+    <ul class="meta" aria-label="Facts">
+      <li>Policy <b>rbi-in@1</b></li>
+      <li>Verdict in <b>~2 ms</b></li>
+      <li><b>700</b> tests</li>
+      <li><b>200</b> allow · <b>403</b> reject</li>
+    </ul>
+    <p class="lede">PRAMANA sits between an AI shopping agent and checkout. It reaches a verdict without any model on the money path. An obligation that was never evaluated blocks exactly as hard as one that failed.</p>
   </header>
 
-  <div class="layout">
-    <section aria-labelledby="scenarios-label">
+  <main>
+    <section class="block" aria-labelledby="scenarios-label">
       <p class="label" id="scenarios-label">Scenarios</p>
-      <div class="cases" id="cases" role="group" aria-labelledby="scenarios-label"></div>
+      <ol class="cases" id="cases" aria-labelledby="scenarios-label"></ol>
     </section>
 
-    <section>
-      <div class="card">
-        <div class="head"><h2>Request</h2><span class="endpoint"><b>POST</b> /v1/evaluate</span></div>
-        <div class="body">
-          <label for="body" class="label">JSON body (editable)</label>
-          <textarea id="body" spellcheck="false" aria-describedby="status"></textarea>
-          <div class="actions">
-            <button class="btn" id="send" type="button">Evaluate</button>
-            <button class="btn ghost" id="reset" type="button">Reset scenario</button>
-            <span class="hint" id="status" role="status"></span>
-          </div>
+    <div class="panes block">
+      <section class="pane" aria-labelledby="request-label">
+        <div class="hd"><span class="label" id="request-label">Request</span><span class="endpoint"><b>POST</b> /v1/evaluate</span></div>
+        <label for="body" class="label">JSON body (editable)</label>
+        <textarea id="body" spellcheck="false" aria-describedby="status"></textarea>
+        <div class="actions">
+          <button class="btn" id="send" type="button">Evaluate</button>
+          <button class="btn ghost" id="reset" type="button">Reset scenario</button>
+          <span class="hint" id="status" role="status"></span>
         </div>
-      </div>
+      </section>
 
-      <div class="card" aria-live="polite">
-        <div class="head"><h2>Verdict</h2><span class="endpoint" id="trace"></span></div>
-        <div class="body" id="result"><p class="empty">Choose a scenario and select Evaluate.</p></div>
-      </div>
-    </section>
-  </div>
-</main>
+      <section class="pane" aria-labelledby="verdict-label">
+        <div class="hd"><span class="label" id="verdict-label">Verdict</span><span class="endpoint" id="trace"></span></div>
+        <div id="result" aria-live="polite"><p class="empty">Choose a scenario and select Evaluate.</p></div>
+      </section>
+    </div>
+  </main>
+</div>
 
 <footer><div class="wrap">
-  <span>Deterministic. No model in any decision. Evidence is hash-chained.</span>
+  <span>Deterministic verification gate for agent payments · Apache-2.0 · <a href="https://github.com/CODER7657/pramana">source</a></span>
   <span>Built by <a href="https://pavanpatel.vercel.app">Pavan Patel</a></span>
 </div></footer>
 
@@ -176,17 +205,23 @@
   let current = 0;
 
   cases.forEach((c, i) => {
+    const li = el('li');
     const b = el('button', 'case');
     b.type = 'button';
     b.setAttribute('aria-pressed', 'false');
-    b.append(el('span', 't', c.t), el('span', 'n', c.n), el('span', 'x', c.x));
+    b.append(el('span', 'num', String(i + 1).padStart(2, '0')),
+             el('span', 't', c.t), el('span', 'n', c.n), el('span', 'x', c.x));
     b.addEventListener('click', () => pick(i));
-    $('cases').append(b);
+    li.append(b);
+    $('cases').append(li);
   });
+
+  // Decorative 12-column rules (visible on desktop only, see CSS).
+  for (let i = 0; i < 12; i++) $('grid').append(el('span'));
 
   function pick(i) {
     current = i;
-    [...$('cases').children].forEach((b, j) => b.setAttribute('aria-pressed', String(i === j)));
+    [...$('cases').children].forEach((li, j) => li.firstChild.setAttribute('aria-pressed', String(i === j)));
     $('body').value = JSON.stringify(cases[i].make(), null, 2);
     $('status').textContent = '';
     $('trace').textContent = '';
@@ -211,7 +246,9 @@
       const data = await r.json().catch(() => ({}));
       const allowed = r.status === 200;
       const box = el('div', 'verdict ' + (allowed ? 'allow' : 'reject'));
-      box.append(el('span', 'badge', `HTTP ${r.status}`), el('span', 'what', data.decision ? `Decision: ${data.decision}` : (r.status === 400 ? 'Malformed request, no decision reached' : 'No decision reached')));
+      const word = data.decision ? String(data.decision).toUpperCase() : 'NO DECISION';
+      box.append(el('span', 'badge', `HTTP ${r.status} \u00b7 ${word}`),
+                 el('span', 'what', data.decision ? `Decision: ${data.decision}` : (r.status === 400 ? 'Malformed request, no decision reached' : 'No decision reached')));
       const dl = el('dl', 'metrics');
       dl.append(metric('Server time', r.headers.get('x-pramana-elapsed-ms') ? `${r.headers.get('x-pramana-elapsed-ms')} ms` : ''),
                 metric('Policy', r.headers.get('x-pramana-policy-version')),
@@ -220,7 +257,13 @@
       if (Array.isArray(data.blocking) && data.blocking.length) {
         parts.push(el('p', 'label', 'Blocking obligations'));
         const ul = el('ul', 'blocking');
-        data.blocking.forEach((id) => ul.append(el('li', null, id)));
+        data.blocking.forEach((id) => {
+          const li = el('li');
+          const mark = el('span', 'sq', '\u25a0');
+          mark.setAttribute('aria-hidden', 'true');
+          li.append(mark, el('span', null, id));
+          ul.append(li);
+        });
         parts.push(ul);
       }
       const det = el('details');
@@ -244,3 +287,4 @@
 </script>
 </body>
 </html>
+
