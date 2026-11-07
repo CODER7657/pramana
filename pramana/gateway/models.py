@@ -55,12 +55,21 @@ class ObligationIn(BaseModel):
     @field_validator("source")
     @classmethod
     def _reject_advisory(cls, value: ObligationSource) -> ObligationSource:
-        """A caller may not submit an advisory risk obligation.
+        """A caller may not submit a risk or regulatory obligation.
+
+        Regulatory obligations carry a citation that only the kernel's policy
+        can supply; the wire model has no citation field, so accepting one made
+        ``Obligation`` raise ``ValueError`` -- a 500 found by contract fuzzing.
 
         Advisory signals come from configured adapters inside the kernel, where
         the one-way property is enforced (ADR-0005). Accepting one over the wire
         would let a caller hand us a `risk.*` obligation of its own choosing.
         """
+        if value is ObligationSource.REGULATORY:
+            raise ValueError(
+                "source 'regulatory' is not accepted over the wire; regulatory "
+                "obligations are evaluated by the kernel from the supplied facts"
+            )
         if value is ObligationSource.RISK:
             raise ValueError(
                 "source 'risk' is not accepted over the wire; advisory signals "
@@ -88,7 +97,9 @@ class FactsIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    amount_paise: int | None = Field(default=None, ge=0)
+    # Upper bound is the largest integer RFC 8785 (JCS) can canonicalise; a
+    # larger one made the verdict hash raise and the gate answer 500.
+    amount_paise: int | None = Field(default=None, ge=0, le=2**53 - 1)
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     category: str | None = Field(default=None, max_length=64)
     afa_performed: bool | None = None
