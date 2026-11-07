@@ -35,6 +35,7 @@ dev = [
     "ruff>=0.7",
     "mypy>=1.13",
     "types-PyYAML",
+    "schemathesis>=4.0",
     "httpx>=0.27",
 ]
 
