@@ -3,73 +3,149 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PRAMANA: try to get a payment past the gate</title>
-<meta name="description" content="A deterministic verification gate for AI-agent payments. Pick an attack, send it, and see why it is refused.">
+<title>PRAMANA · Verification gate for agent payments</title>
+<meta name="description" content="A deterministic verification gate between AI shopping agents and payment. Send a scenario and see the verdict, the blocking obligations and the evidence.">
+<meta name="theme-color" content="#ffffff">
 <style>
-  :root { --bg:#efe6d8; --ink:#2b2522; --sage:#9ba392; --wine:#511b24; --ok:#2f5d3a; --line:rgb(43 37 34/.18); color-scheme: light; }
+  :root {
+    --bg: #ffffff; --panel: #f7f8fa; --line: #e3e6eb; --ink: #0f172a; --muted: #5b6474;
+    --accent: #1e3a8a; --accent-soft: #eef2fb;
+    --allow: #166534; --allow-bg: #f0f7f2; --reject: #9b1c1c; --reject-bg: #fbf1f1;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color-scheme: light;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; }
-  .eyebrow { font: 600 12px ui-monospace,Menlo,monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--wine); }
-  h1 { font-size: clamp(34px, 6vw, 64px); line-height:.95; letter-spacing:-.03em; margin:.3em 0 .3em; font-weight:900; }
-  .lede { max-width: 62ch; font-size: 18px; }
-  .grid { display:grid; gap:20px; grid-template-columns: 1fr; margin-top: 28px; }
-  @media (min-width: 900px) { .grid { grid-template-columns: 360px 1fr; } }
-  .cases { display:grid; gap:10px; align-content:start; }
-  .case { text-align:left; border:1.5px solid var(--ink); background:transparent; color:inherit; padding:14px 16px; cursor:pointer; font:inherit; border-radius:0; }
-  .case b { display:block; }
-  .case span { font-size:14px; opacity:.8; }
-  .case[aria-pressed="true"] { background:var(--ink); color:var(--bg); }
-  .case:focus-visible, button:focus-visible, textarea:focus-visible { outline:3px solid var(--wine); outline-offset:2px; }
-  .panel { border:1.5px solid var(--ink); background:rgb(255 255 255/.35); padding:16px; min-width:0; }
-  textarea { width:100%; min-height: 220px; font: 13px/1.45 ui-monospace,Menlo,monospace; border:1px solid var(--line); background:#fffdf8; color:var(--ink); padding:10px; resize: vertical; }
-  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin: 12px 0; }
-  .send { background:var(--wine); color:var(--bg); border:0; padding:12px 20px; font: 600 13px ui-monospace,Menlo,monospace; letter-spacing:.06em; text-transform:uppercase; cursor:pointer; min-height:44px; }
-  .send[disabled] { opacity:.6; cursor:wait; }
-  .verdict { font-weight:900; font-size: clamp(26px, 4vw, 40px); letter-spacing:-.02em; }
-  .allow { color: var(--ok); } .reject { color: var(--wine); }
-  .meta { font: 13px ui-monospace,Menlo,monospace; }
-  pre { background:#fffdf8; border:1px solid var(--line); padding:10px; overflow:auto; max-height: 360px; font: 12.5px/1.45 ui-monospace,Menlo,monospace; margin:0; }
-  ul.blocking { margin: 6px 0 12px; padding-left: 20px; }
-  footer { margin-top: 36px; font-size: 14px; }
-  a { color: var(--wine); }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .top { border-bottom: 1px solid var(--line); }
+  .top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 56px; }
+  .brand { font-weight: 700; letter-spacing: .14em; font-size: 13px; }
+  .brand span { color: var(--muted); font-weight: 500; letter-spacing: .02em; margin-left: 10px; }
+  .top nav { display: flex; gap: 20px; font-size: 14px; }
+  .top nav a { color: var(--muted); text-decoration: none; }
+  .top nav a:hover { color: var(--ink); }
+
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 20px; }
+  header.intro { padding: 40px 0 28px; display: grid; gap: 14px; max-width: 760px; }
+  .kicker { font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-size: clamp(26px, 3.4vw, 36px); line-height: 1.15; letter-spacing: -.015em; margin: 0; font-weight: 700; }
+  .intro p { margin: 0; color: var(--muted); font-size: 16px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: var(--muted); }
+  .facts b { color: var(--ink); font-weight: 600; }
+
+  .layout { display: grid; gap: 20px; grid-template-columns: 1fr; padding-bottom: 56px; }
+  @media (min-width: 960px) { .layout { grid-template-columns: 320px minmax(0, 1fr); } }
+
+  .label { font: 600 12px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  .cases { display: grid; gap: 8px; align-content: start; }
+  .case { display: grid; gap: 2px; text-align: left; width: 100%; padding: 12px 14px; border: 1px solid var(--line); background: var(--bg); color: inherit; font: inherit; border-radius: 6px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .case:hover { border-color: #c9ced6; }
+  .case[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .case .t { font-weight: 600; font-size: 14px; }
+  .case .n { font-size: 13px; color: var(--muted); }
+  .case .x { font: 600 11px var(--mono); color: var(--muted); }
+
+  .card { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); min-width: 0; }
+  .card + .card { margin-top: 16px; }
+  .card .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); border-radius: 8px 8px 0 0; }
+  .card .head h2 { font-size: 14px; margin: 0; font-weight: 600; }
+  .card .body { padding: 16px; }
+  .endpoint { font: 13px var(--mono); color: var(--muted); }
+  .endpoint b { color: var(--ink); font-weight: 600; }
+
+  textarea { width: 100%; min-height: 260px; resize: vertical; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); padding: 12px; font: 12.5px/1.5 var(--mono); }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
+  .btn { appearance: none; border: 1px solid var(--accent); background: var(--accent); color: #fff; font: 600 14px var(--sans); padding: 10px 18px; min-height: 42px; border-radius: 6px; cursor: pointer; }
+  .btn:hover { background: #172e6e; }
+  .btn[disabled] { opacity: .6; cursor: progress; }
+  .btn.ghost { background: var(--bg); color: var(--ink); border-color: var(--line); }
+  .hint { font-size: 13px; color: var(--muted); }
+  .error { color: var(--reject); font-size: 13px; }
+
+  .verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 16px; border-radius: 6px; }
+  .verdict.allow { background: var(--allow-bg); }
+  .verdict.reject { background: var(--reject-bg); }
+  .verdict .badge { font: 700 13px var(--mono); letter-spacing: .04em; padding: 4px 10px; border-radius: 4px; color: #fff; }
+  .allow .badge { background: var(--allow); }
+  .reject .badge { background: var(--reject); }
+  .verdict .what { font-weight: 600; }
+  .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin: 14px 0; }
+  .metrics div { background: var(--bg); padding: 10px 12px; }
+  .metrics dt { font: 600 11px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .metrics dd { margin: 2px 0 0; font: 600 15px var(--mono); overflow-wrap: anywhere; }
+  .blocking { margin: 0 0 14px; padding: 0; list-style: none; display: grid; gap: 6px; }
+  .blocking li { font: 13px var(--mono); padding: 8px 10px; border: 1px solid #ecd3d3; background: var(--reject-bg); border-radius: 4px; }
+  details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  pre { margin: 10px 0 0; max-height: 380px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; font: 12px/1.5 var(--mono); }
+  .empty { color: var(--muted); font-size: 14px; }
+
+  footer { border-top: 1px solid var(--line); padding: 20px 0 32px; font-size: 13px; color: var(--muted); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<main>
-  <p class="eyebrow">PRAMANA · live verification gate</p>
-  <h1>Try to get a payment past the gate.</h1>
-  <p class="lede">An AI shopping agent wants to pay. PRAMANA decides with <strong>no model on the money path</strong>: every obligation the policy declares must have been checked and met. A check that never ran blocks as hard as one that failed. <strong>200 = allow, 403 = reject.</strong></p>
+<div class="top"><div class="wrap">
+  <div class="brand">PRAMANA<span>Verification gate</span></div>
+  <nav aria-label="Links">
+    <a href="/docs">API docs</a>
+    <a href="/v1/policy">Policy</a>
+    <a href="https://github.com/CODER7657/pramana">Source</a>
+  </nav>
+</div></div>
 
-  <div class="grid">
-    <div class="cases" role="group" aria-label="Scenarios" id="cases"></div>
-    <section class="panel" aria-live="polite">
-      <label for="body" class="eyebrow">Request (editable)</label>
-      <textarea id="body" spellcheck="false"></textarea>
-      <div class="row">
-        <button class="send" id="send">Send to /v1/evaluate</button>
-        <span class="meta" id="status"></span>
+<main class="wrap">
+  <header class="intro">
+    <div class="kicker">Agent payments · RBI e-mandate rules</div>
+    <h1>Every obligation must have been checked, or the payment does not go through.</h1>
+    <p>PRAMANA sits between an AI shopping agent and checkout. It reaches a verdict without any model on the money path. An obligation that was never evaluated blocks exactly as hard as one that failed.</p>
+    <div class="facts"><span><b>200</b> allow</span><span><b>403</b> reject</span><span><b>691</b> tests</span><span><b>~2 ms</b> per verdict</span></div>
+  </header>
+
+  <div class="layout">
+    <section aria-labelledby="scenarios-label">
+      <p class="label" id="scenarios-label">Scenarios</p>
+      <div class="cases" id="cases" role="group" aria-labelledby="scenarios-label"></div>
+    </section>
+
+    <section>
+      <div class="card">
+        <div class="head"><h2>Request</h2><span class="endpoint"><b>POST</b> /v1/evaluate</span></div>
+        <div class="body">
+          <label for="body" class="label">JSON body (editable)</label>
+          <textarea id="body" spellcheck="false" aria-describedby="status"></textarea>
+          <div class="actions">
+            <button class="btn" id="send" type="button">Evaluate</button>
+            <button class="btn ghost" id="reset" type="button">Reset scenario</button>
+            <span class="hint" id="status" role="status"></span>
+          </div>
+        </div>
       </div>
-      <div id="result" hidden>
-        <div class="verdict" id="verdict"></div>
-        <div class="meta" id="timing"></div>
-        <div id="why"></div>
-        <pre id="raw"></pre>
+
+      <div class="card" aria-live="polite">
+        <div class="head"><h2>Verdict</h2><span class="endpoint" id="trace"></span></div>
+        <div class="body" id="result"><p class="empty">Choose a scenario and select Evaluate.</p></div>
       </div>
     </section>
   </div>
-
-  <footer>
-    <a href="/docs">OpenAPI docs</a> · <a href="/v1/policy">The policy in force</a> · <a href="https://github.com/CODER7657/pramana">Source (691 tests)</a> · <a href="https://pavanpatel.vercel.app">Pavan Patel</a>
-  </footer>
 </main>
+
+<footer><div class="wrap">
+  <span>Deterministic. No model in any decision. Evidence is hash-chained.</span>
+  <span>Built by <a href="https://pavanpatel.vercel.app">Pavan Patel</a></span>
+</div></footer>
+
 <script>
 (() => {
   const hours = (h) => new Date(Date.now() + h * 3600e3).toISOString();
   const ob = (id, source, status = 'satisfied') => ({ id, status, source, detail: `${id} evaluated` });
-  const ref = '7eac10f83cdb39449a6accdad2699adf70941cc0c8c108fbb20b71b6b013e650';
+  const REF = '7eac10f83cdb39449a6accdad2699adf70941cc0c8c108fbb20b71b6b013e650';
   const base = () => ({
-    mandate_ref: ref,
+    mandate_ref: REF,
     facts: {
       amount_paise: 500000, currency: 'INR', category: 'groceries',
       afa_performed: false, afa_at_registration: true,
@@ -81,69 +157,87 @@
     merchant_obligations: [ob('merchant.category_allowed', 'merchant')],
   });
   const cases = [
-    { title: 'Legitimate ₹5,000 groceries', note: 'Every check ran and passed.', make: base },
-    { title: '₹20,000 with no extra authentication', note: 'Above ₹15,000 the customer must re-authenticate (AFA).',
+    { t: 'Legitimate payment', n: 'Rs 5,000 groceries, every check run and met.', x: 'expect 200', make: base },
+    { t: 'Above the AFA threshold', n: 'Rs 20,000 without re-authentication.', x: 'expect 403',
       make: () => { const b = base(); b.facts.amount_paise = 2000000; return b; } },
-    { title: 'Budget check never ran', note: 'The agent quietly drops one obligation.',
+    { t: 'Budget check never ran', n: 'The agent omits one declared obligation.', x: 'expect 403',
       make: () => { const b = base(); b.mandate_obligations = b.mandate_obligations.filter((o) => o.id !== 'mandate.budget'); return b; } },
-    { title: 'Budget check failed', note: 'The amount is over the mandated cap.',
+    { t: 'Budget check failed', n: 'The amount is over the mandated cap.', x: 'expect 403',
       make: () => { const b = base(); b.mandate_obligations[0].status = 'violated'; return b; } },
-    { title: 'Mandate expired yesterday', note: 'Valid-until is in the past.',
+    { t: 'Mandate expired', n: 'Valid-until was yesterday.', x: 'expect 403',
       make: () => { const b = base(); b.facts.mandate_valid_until = hours(-24); return b; } },
-    { title: 'Debit notice sent 2 hours ago', note: 'RBI requires 24 hours’ notice.',
+    { t: 'Late pre-debit notice', n: 'Notice sent 2 hours before; 24 are required.', x: 'expect 403',
       make: () => { const b = base(); b.facts.pre_debit_notice_at = hours(-2); return b; } },
   ];
+
   const $ = (id) => document.getElementById(id);
-  const list = $('cases');
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  let current = 0;
+
   cases.forEach((c, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'case';
-    btn.type = 'button';
-    btn.setAttribute('aria-pressed', 'false');
-    btn.innerHTML = `<b></b><span></span>`;
-    btn.querySelector('b').textContent = c.title;
-    btn.querySelector('span').textContent = c.note;
-    btn.addEventListener('click', () => pick(i));
-    list.appendChild(btn);
+    const b = el('button', 'case');
+    b.type = 'button';
+    b.setAttribute('aria-pressed', 'false');
+    b.append(el('span', 't', c.t), el('span', 'n', c.n), el('span', 'x', c.x));
+    b.addEventListener('click', () => pick(i));
+    $('cases').append(b);
   });
+
   function pick(i) {
-    [...list.children].forEach((b, j) => b.setAttribute('aria-pressed', String(i === j)));
+    current = i;
+    [...$('cases').children].forEach((b, j) => b.setAttribute('aria-pressed', String(i === j)));
     $('body').value = JSON.stringify(cases[i].make(), null, 2);
-    $('result').hidden = true;
     $('status').textContent = '';
+    $('trace').textContent = '';
+    $('result').replaceChildren(el('p', 'empty', 'Select Evaluate to send this request.'));
   }
+
+  function metric(label, value) {
+    const d = el('div');
+    d.append(el('dt', null, label), el('dd', null, value || '—'));
+    return d;
+  }
+
   async function send() {
     let payload;
-    try { payload = JSON.parse($('body').value); } catch { $('status').textContent = 'That is not valid JSON.'; return; }
+    try { payload = JSON.parse($('body').value); }
+    catch { $('status').className = 'error'; $('status').textContent = 'The request is not valid JSON.'; return; }
+    $('status').className = 'hint';
+    $('status').textContent = 'Evaluating…';
     $('send').disabled = true;
-    $('status').textContent = 'Sending…';
     try {
       const r = await fetch('/v1/evaluate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await r.json().catch(() => ({}));
-      const decision = data.decision || (r.status === 400 ? 'no decision (malformed request)' : `HTTP ${r.status}`);
-      $('verdict').textContent = `HTTP ${r.status} · ${String(decision).toUpperCase()}`;
-      $('verdict').className = 'verdict ' + (r.status === 200 ? 'allow' : 'reject');
-      const ms = r.headers.get('x-pramana-elapsed-ms');
-      $('timing').textContent = ms ? `decided in ${ms} ms on the server · policy ${r.headers.get('x-pramana-policy-version') || ''}` : '';
-      const why = $('why');
-      why.textContent = '';
-      const blocking = data.blocking || data.blocking_obligations || [];
-      if (blocking.length) {
-        const h = document.createElement('p'); h.className = 'eyebrow'; h.textContent = 'Blocked by';
-        const ul = document.createElement('ul'); ul.className = 'blocking';
-        blocking.forEach((b) => { const li = document.createElement('li'); li.textContent = typeof b === 'string' ? b : (b.id || JSON.stringify(b)); ul.appendChild(li); });
-        why.append(h, ul);
+      const allowed = r.status === 200;
+      const box = el('div', 'verdict ' + (allowed ? 'allow' : 'reject'));
+      box.append(el('span', 'badge', `HTTP ${r.status}`), el('span', 'what', data.decision ? `Decision: ${data.decision}` : (r.status === 400 ? 'Malformed request, no decision reached' : 'No decision reached')));
+      const dl = el('dl', 'metrics');
+      dl.append(metric('Server time', r.headers.get('x-pramana-elapsed-ms') ? `${r.headers.get('x-pramana-elapsed-ms')} ms` : ''),
+                metric('Policy', r.headers.get('x-pramana-policy-version')),
+                metric('Ledger record', data.ledger_sequence != null ? `#${data.ledger_sequence}` : ''));
+      const parts = [box, dl];
+      if (Array.isArray(data.blocking) && data.blocking.length) {
+        parts.push(el('p', 'label', 'Blocking obligations'));
+        const ul = el('ul', 'blocking');
+        data.blocking.forEach((id) => ul.append(el('li', null, id)));
+        parts.push(ul);
       }
-      $('raw').textContent = JSON.stringify(data, null, 2);
-      $('result').hidden = false;
+      const det = el('details');
+      det.append(el('summary', null, 'Full response'), el('pre', null, JSON.stringify(data, null, 2)));
+      parts.push(det);
+      $('result').replaceChildren(...parts);
+      $('trace').textContent = data.trace_id ? `trace ${String(data.trace_id).slice(0, 12)}` : '';
       $('status').textContent = '';
     } catch {
-      $('status').textContent = 'Could not reach the gate. Try again.';
+      $('status').className = 'error';
+      $('status').textContent = 'Could not reach the gate. Please try again.';
     } finally {
       $('send').disabled = false;
     }
   }
+
   $('send').addEventListener('click', send);
+  $('reset').addEventListener('click', () => pick(current));
   pick(0);
 })();
 </script>
