@@ -277,6 +277,30 @@ class TestTracePropagation:
 # ---------------------------------------------------------------------------
 
 
+class TestFuzzRegressions:
+    """Found by tests/integration/test_contract_fuzz.py: both were HTTP 500."""
+
+    def test_caller_supplied_regulatory_obligation_is_a_400(self) -> None:
+        response = client().post(
+            "/v1/evaluate",
+            json=body(merchant_obligations=[ob("x.reg", "regulatory", "violated")]),
+        )
+        assert response.status_code == 400
+        assert "regulatory" in response.json()["detail"]
+
+    def test_amount_beyond_json_safe_integers_is_a_400(self) -> None:
+        response = client().post(
+            "/v1/evaluate", json=body(facts={"amount_paise": 2**63})
+        )
+        assert response.status_code == 400
+
+    def test_largest_canonicalisable_amount_is_still_accepted(self) -> None:
+        response = client().post(
+            "/v1/evaluate", json=body(facts={"amount_paise": 2**53 - 1})
+        )
+        assert response.status_code in (200, 403)
+
+
 class TestValidation:
     @pytest.mark.parametrize(
         "bad_ref", ["", "short", "A" * 64, "z" * 64, "not-a-hash"]
