@@ -26,7 +26,8 @@
   .brand { font-weight: 700; letter-spacing: .14em; font-size: 13px; }
   .brand span { color: var(--muted); font-weight: 500; letter-spacing: .02em; margin-left: 10px; }
   .top nav { display: flex; gap: 20px; font-size: 14px; }
-  .top nav a { color: var(--muted); text-decoration: none; }
+  .top nav a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+  @media (max-width: 560px) { .brand span { display: none; } .top nav { gap: 14px; } }
   .top nav a:hover { color: var(--ink); }
 
   .wrap { max-width: 1160px; margin: 0 auto; padding: 0 20px; }
