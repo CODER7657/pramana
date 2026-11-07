@@ -23,7 +23,7 @@ jobs:
     name: Supply-chain pin
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: AP2 dependency must be pinned to the expected commit SHA
         # A moved tag or a silently-resolved branch would put unreviewed code
@@ -49,9 +49,9 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -113,8 +113,8 @@ jobs:
     name: Kernel safety invariants
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
