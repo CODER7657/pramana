@@ -1,0 +1,6 @@
+# Store text with LF in the repository, whatever the committer's OS or git
+# settings; check out Windows scripts with CRLF. Binary files are detected.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
