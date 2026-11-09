@@ -1,0 +1,67 @@
+name: mutation testing (evaluator)
+
+# Weekly mutation testing of the evaluator core with mutmut (config in pyproject.toml,
+# [tool.mutmut]): gate.py, verdict.py and the RBI and policy predicates, each mutant
+# judged by tests/unit. Survivors are reported, not failed on; the job fails only if the
+# score falls below the floor.
+on:
+  schedule:
+    - cron: "41 3 * * 1" # Mondays 03:41 UTC
+  workflow_dispatch:
+
+# Least privilege: reads the repository, uses no secret.
+permissions:
+  contents: read
+
+jobs:
+  mutmut:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      MUTATION_FLOOR: "0" # set from the first measured run
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install "mutmut==3.8.1"
+      - name: mutmut run (survivors are reported, not failed on)
+        run: |
+          set +e
+          mutmut run --max-children 4 > mutmut-run.log 2>&1
+          echo "mutmut run exited $?"
+          tail -n 3 mutmut-run.log
+      - name: results and score floor
+        run: |
+          mutmut results --all true > mutmut-results.txt
+          mutmut export-cicd-stats
+          python - <<'PY'
+          import json, os
+          s = json.load(open("mutants/mutmut-cicd-stats.json"))
+          judged = s["total"] - s["skipped"]  # a mutant no test runs counts as a survivor
+          score = 100 * (s["killed"] + s["timeout"]) / judged if judged else 0.0
+          floor = float(os.environ["MUTATION_FLOOR"])
+          line = (f"mutmut on the evaluator: {s['killed']} killed, {s['survived']} survived, "
+                  f"{s['timeout']} timeout, {s['no_tests']} not covered, of {s['total']}: "
+                  f"score {score:.1f}% (floor {floor:.0f}%)")
+          print(line)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(line + "\n")
+          if judged == 0 or score < floor:
+              raise SystemExit(f"mutation score {score:.1f}% is below the floor of {floor:.0f}%")
+          PY
+      - name: upload mutmut results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutmut-results
+          path: |
+            mutmut-run.log
+            mutmut-results.txt
+            mutants/mutmut-cicd-stats.json
+          if-no-files-found: warn
+          retention-days: 30

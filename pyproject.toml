@@ -146,3 +146,15 @@ branch = true
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+
+# Mutation testing (.github/workflows/mutation.yml): mutate the evaluator core and judge
+# each mutant with the unit tests.
+[tool.mutmut]
+source_paths = ["pramana"]
+only_mutate = [
+    "pramana/kernel/gate.py",
+    "pramana/kernel/verdict.py",
+    "pramana/kernel/verify/rbi.py",
+    "pramana/kernel/verify/policy.py",
+]
+pytest_add_cli_args_test_selection = ["tests/unit"]
