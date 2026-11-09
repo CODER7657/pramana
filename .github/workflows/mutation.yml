@@ -58,7 +58,10 @@ jobs:
           print(line)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
               f.write(line + "\n")
-          if judged == 0 or score < floor:
+          ran = s["killed"] + s["survived"] + s["timeout"]
+          if ran == 0:  # mutmut's own baseline failed: nothing was measured, which is not a pass
+              raise SystemExit("no mutant was judged; see mutmut-run.log")
+          if score < floor:
               raise SystemExit(f"mutation score {score:.1f}% is below the floor of {floor:.0f}%")
           PY
       - name: upload mutmut results

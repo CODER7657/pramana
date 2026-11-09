@@ -158,3 +158,5 @@ only_mutate = [
     "pramana/kernel/verify/policy.py",
 ]
 pytest_add_cli_args_test_selection = ["tests/unit"]
+# Files the unit tests read (the README test count, the generated policy reference).
+also_copy = ["README.md", "scripts", "public", "docs"]
