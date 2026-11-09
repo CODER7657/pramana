@@ -8,6 +8,13 @@ on:
   schedule:
     - cron: "41 3 * * 1" # Mondays 03:41 UTC
   workflow_dispatch:
+  # A change to the evaluator (or to this gate) is mutation-tested before it merges.
+  pull_request:
+    paths:
+      - "pramana/kernel/gate.py"
+      - "pramana/kernel/verdict.py"
+      - "pramana/kernel/verify/**"
+      - ".github/workflows/mutation.yml"
 
 # Least privilege: reads the repository, uses no secret.
 permissions:
