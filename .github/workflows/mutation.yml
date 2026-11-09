@@ -2,7 +2,7 @@ name: mutation testing (evaluator)
 
 # Weekly mutation testing of the evaluator core with mutmut (config in pyproject.toml,
 # [tool.mutmut]): gate.py, verdict.py and the RBI and policy predicates, each mutant
-# judged by tests/unit. Survivors are reported, not failed on; the job fails only if the
+# judged by the whole test suite. Survivors are reported, not failed on; the job fails only if the
 # score falls below the floor.
 on:
   schedule:
