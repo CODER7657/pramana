@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import html
-import inspect
 import json
 import re
 import sys
@@ -35,6 +34,7 @@ POLICY_NAME = "rbi-in"
 HTML_OUT = ROOT / "public" / "policy.html"
 MD_OUT = ROOT / "docs" / "policy-reference.md"
 REPO = "https://github.com/CODER7657/pramana/blob/main"
+RBI_SOURCE = "pramana/kernel/verify/rbi.py"
 ADAPTERS = ("pramana/adapters/ap2.py", "pramana/adapters/ap2_chain.py")
 
 GROUPS = (
@@ -53,9 +53,12 @@ def evaluated_by(spec_id: str) -> tuple[str, str]:
     """(label, repo-relative path#Lline) of the code that produces this obligation."""
     fn = rbi.PREDICATES.get(spec_id)
     if fn is not None:
-        path = Path(inspect.getfile(fn)).resolve().relative_to(ROOT).as_posix()
-        line = inspect.getsourcelines(fn)[1]
-        return f"rbi.{fn.__name__}()", f"{path}#L{line}"
+        # Read the definition from the source text, not by introspection: under mutation
+        # testing the registered functions are wrappers that live elsewhere.
+        name = fn.__name__
+        source = (ROOT / RBI_SOURCE).read_text(encoding="utf-8").splitlines()
+        line = next(n for n, t in enumerate(source, 1) if t.startswith(f"def {name}("))
+        return f"rbi.{name}()", f"{RBI_SOURCE}#L{line}"
     needle = f'"{spec_id}"'
     for rel in ADAPTERS:
         lines = (ROOT / rel).read_text(encoding="utf-8").splitlines()
