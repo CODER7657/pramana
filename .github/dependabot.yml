@@ -7,6 +7,11 @@ updates:
     groups:
       python-dependencies:
         patterns: ["*"]
+    ignore:
+      # The pinned AP2 dependency requires pytest==9.0.2 at runtime, so raising our lower
+      # bound past it can never resolve (pip ResolutionImpossible, #9). Revisit when the
+      # AP2 pin in pyproject.toml moves.
+      - dependency-name: "pytest"
   - package-ecosystem: github-actions
     directory: /
     schedule:
