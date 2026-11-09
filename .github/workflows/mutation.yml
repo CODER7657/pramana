@@ -25,7 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      MUTATION_FLOOR: "0" # set from the first measured run
+      # Measured 960 of 1470 killed (65.3%) on 2026-11-09; the floor stops it sliding. Most
+      # survivors are in the RBI predicates (pramana/kernel/verify/rbi.py): raise this as
+      # tests are added there.
+      MUTATION_FLOOR: "63"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

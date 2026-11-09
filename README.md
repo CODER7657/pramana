@@ -395,6 +395,12 @@ in a dispute can recompute the hash from the same facts in a different language.
 Honest, and updated as it changes. First build session, 2026-08-23.
 **711 tests**, all green. That number is asserted by a test, so it cannot drift.
 
+**Mutation score of the evaluator: 65.3%** (960 of 1,470 mutants killed, 2026-11-09).
+A weekly job ([`mutation.yml`](.github/workflows/mutation.yml), also on any pull request that
+changes the evaluator) mutates `gate.py`, `verdict.py` and the RBI and policy predicates and
+fails below a 63% floor. Most of the 510 survivors are in `verify/rbi.py`: changes there that
+no test notices yet. That is the next place tests are needed.
+
 | Component | State |
 | --- | --- |
 | Verdict kernel — invariants, JCS canonicalisation | **Built** |
