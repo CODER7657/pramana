@@ -41,3 +41,6 @@ var/
 Thumbs.db
 .vercel
 .env*
+
+# mutmut
+mutants/
