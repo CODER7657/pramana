@@ -1,0 +1,16 @@
+name: Bug report
+description: A verdict, evidence record or API response that is wrong.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what should the gate have decided?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Request or mandate to reproduce
+      description: Synthetic data only; never paste real payment credentials.
+      render: json
