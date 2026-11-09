@@ -148,7 +148,8 @@ branch = true
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
 
 # Mutation testing (.github/workflows/mutation.yml): mutate the evaluator core and judge
-# each mutant with the whole suite (about 8 s).
+# each mutant with the unit and integration tests. The benchmark tests check sealed
+# files against git history, which mutmut's sandbox does not have.
 [tool.mutmut]
 source_paths = ["pramana"]
 only_mutate = [
@@ -160,8 +161,9 @@ only_mutate = [
 # The policy-reference test checks generated docs against source line numbers, which
 # mutmut's rewritten sources shift; it runs in normal CI, not against mutants.
 pytest_add_cli_args_test_selection = [
-    "tests",
+    "tests/unit",
+    "tests/integration",
     "--ignore=tests/unit/test_policy_reference.py",
 ]
 # Files the unit tests read (the README test count, the generated policy reference).
-also_copy = ["README.md", "POSTMORTEM.md", "pyproject.toml"]
+also_copy = ["README.md", "POSTMORTEM.md", "pyproject.toml", "public"]
