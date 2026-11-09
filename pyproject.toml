@@ -159,4 +159,4 @@ only_mutate = [
 ]
 pytest_add_cli_args_test_selection = ["tests/unit"]
 # Files the unit tests read (the README test count, the generated policy reference).
-also_copy = ["README.md", "scripts", "public", "docs"]
+also_copy = ["README.md", "POSTMORTEM.md", "pyproject.toml", "scripts", "public", "docs"]
