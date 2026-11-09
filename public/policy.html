@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRAMANA policy reference: rbi-in@1</title>
+<meta name="description" content="Every obligation in the rbi-in@1 policy, its parameters, the code that evaluates it, and its source.">
+<style>:root{--ink:#0f172a;--muted:#475569;--rule:#cbd5e1;--paper:#f8fafc;--navy:#1e3a5f;--accent:#0b5cad}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);
+font:16px/1.55 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+header{background:var(--navy);color:#fff;padding:20px 24px}header a{color:#fff}
+header .row{max-width:880px;margin:0 auto;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+main{max-width:880px;margin:0 auto;padding:24px}
+h1{font-size:clamp(1.5rem,1.2rem + 1.5vw,2rem);margin:0 0 4px}h2{margin:40px 0 4px;font-size:1.25rem}
+.lede{color:var(--muted);margin:0 0 16px}
+article{border-top:1px solid var(--rule);padding:16px 0}
+code,.id{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:.92em}
+.id{font-weight:600;font-size:1rem}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:8px 0 0}
+dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}
+a{color:var(--accent)}a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.note{background:#fff;border:1px solid var(--rule);padding:12px 16px;border-radius:4px}
+@media (max-width:560px){dl{grid-template-columns:1fr}dt{margin-top:6px}}</style></head><body>
+<header><div class="row"><strong>PRAMANA</strong>
+<nav aria-label="Links"><a href="/">Playground</a> · <a href="/v1/policy">Policy JSON</a> · <a href="https://github.com/CODER7657/pramana">Source</a></nav></div></header>
+<main>
+<h1>Policy reference: <code>rbi-in@1</code></h1>
+<p class="lede">Deterministic envelope for agent-initiated payments under Indian rails. Protocol integrity, mandate conformance, and the RBI e-mandate framework.</p>
+<p class="note">Generated from <a href="https://github.com/CODER7657/pramana/blob/main/pramana/policies/rbi-in.yaml"><code>pramana/policies/rbi-in.yaml</code></a>. Every obligation is evaluated on every payment; one with no result is <strong>INDETERMINATE</strong>, which rejects.</p>
+<h2>Protocol integrity</h2>
+<p class="lede">The AP2 delegation chain itself.</p>
+<article id="chain.verified"><div class="id">chain.verified</div>
+<p>The AP2 delegation chain verifies: every hop&#x27;s signature is valid, cnf binding holds, and the presentation matches the expected audience.</p><dl>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/adapters/ap2.py#L222"><code>ap2 adapter</code></a></dd>
+</dl></article>
+<article id="chain.nonce_fresh"><div class="id">chain.nonce_fresh</div>
+<p>The presentation nonce has not been seen before. Requires state AP2 deliberately does not hold; without it, replay is unenforceable.</p><dl>
+<dt>window_seconds</dt><dd>900</dd>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/adapters/ap2_chain.py#L264"><code>ap2_chain adapter</code></a></dd>
+</dl></article>
+<article id="chain.disclosures_pinned"><div class="id">chain.disclosures_pinned</div>
+<p>Every constraint the policy requires is actually PRESENT in the presented mandate. This is the control for the withheld-constraint finding: AP2 evaluates what is disclosed, so an absent cap yields no violation. Absence here is INDETERMINATE, which rejects.</p><dl>
+<dt>required_constraints</dt><dd>payment.budget, payment.allowed_payees</dd>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/adapters/ap2.py#L224"><code>ap2 adapter</code></a></dd>
+</dl></article>
+<h2>Mandate conformance</h2>
+<p class="lede">Limits the user chose and signed.</p>
+<article id="mandate.budget"><div class="id">mandate.budget</div>
+<p>Cumulative spend against the user&#x27;s signed cap. Requires the persisted MandateContext that AP2 defines but never stores.</p><dl>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/adapters/ap2_chain.py#L204"><code>ap2_chain adapter</code></a></dd>
+</dl></article>
+<article id="mandate.payee_in_scope"><div class="id">mandate.payee_in_scope</div>
+<p>The payee appears in the mandate&#x27;s allowed-payee list.</p><dl>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/adapters/ap2_chain.py#L219"><code>ap2_chain adapter</code></a></dd>
+</dl></article>
+<article id="mandate.not_expired"><div class="id">mandate.not_expired</div>
+<p>The mandate&#x27;s validity window covers the execution date.</p><dl>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/adapters/ap2_chain.py#L226"><code>ap2_chain adapter</code></a></dd>
+</dl></article>
+<h2>Merchant rules</h2>
+<p class="lede">Rules that bind even when the mandate allows more.</p>
+<article id="merchant.category_allowed"><div class="id">merchant.category_allowed</div>
+<p>The purchase category is one this merchant accepts from agents. Merchant policy binds even where the mandate is permissive.</p><dl>
+<dt>blocked_categories</dt><dd>gambling, crypto</dd>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/adapters/ap2_chain.py#L233"><code>ap2_chain adapter</code></a></dd>
+</dl></article>
+<h2>RBI e-mandate framework</h2>
+<p class="lede">Rules no mandate can waive.</p>
+<article id="rbi.afa_threshold"><div class="id">rbi.afa_threshold</div>
+<p>Recurring transactions above INR 15,000 require Additional Factor of Authentication. An agent-initiated debit above the ceiling without AFA evidence is outside the framework.</p><dl>
+<dt>ceiling_paise</dt><dd>1,500,000 paise (INR 15,000)</dd>
+<dt>defers_to</dt><dd>{&quot;obligation&quot;: &quot;rbi.category_ceiling&quot;, &quot;when_category_in&quot;: &quot;enhanced_categories&quot;}</dd>
+<dt>deferred_categories</dt><dd>insurance, mutual_fund, credit_card_bill</dd>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/kernel/verify/rbi.py#L108"><code>rbi.afa_threshold()</code></a></dd>
+<dt>Source</dt><dd>RBI, Digital Payments - E-mandate Framework, 2026, AFA exemption ceiling for recurring transactions (effective 2026-04-21)</dd>
+</dl></article>
+<article id="rbi.category_ceiling"><div class="id">rbi.category_ceiling</div>
+<p>Specified categories carry an enhanced AFA-free ceiling of INR 1,00,000: insurance premiums, mutual fund subscriptions, and credit card bill payments. Outside those categories the standard ceiling applies.</p><dl>
+<dt>enhanced_ceiling_paise</dt><dd>10,000,000 paise (INR 100,000)</dd>
+<dt>enhanced_categories</dt><dd>insurance, mutual_fund, credit_card_bill</dd>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/kernel/verify/rbi.py#L178"><code>rbi.category_ceiling()</code></a></dd>
+<dt>Source</dt><dd>RBI, Digital Payments - E-mandate Framework, 2026, Enhanced ceiling for specified categories (effective 2026-04-21)</dd>
+</dl></article>
+<article id="rbi.pre_debit_notice"><div class="id">rbi.pre_debit_notice</div>
+<p>The customer must receive a pre-transaction notification at least 24 hours before the debit, with an opt-out path.</p><dl>
+<dt>minimum_notice_hours</dt><dd>24</dd>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/kernel/verify/rbi.py#L227"><code>rbi.pre_debit_notice()</code></a></dd>
+<dt>Source</dt><dd>RBI, Digital Payments - E-mandate Framework, 2026, Pre-transaction notification requirement (effective 2026-04-21)</dd>
+</dl></article>
+<article id="rbi.mandate_registered_with_afa"><div class="id">rbi.mandate_registered_with_afa</div>
+<p>Registration, modification and withdrawal of an e-mandate each require AFA. A mandate presented without evidence of AFA at registration is not a valid basis for an agent-initiated debit.</p><dl>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/kernel/verify/rbi.py#L272"><code>rbi.mandate_registered_with_afa()</code></a></dd>
+<dt>Source</dt><dd>RBI, Digital Payments - E-mandate Framework, 2026, AFA on registration, modification and withdrawal (effective 2026-04-21)</dd>
+</dl></article>
+<article id="rbi.validity_window"><div class="id">rbi.validity_window</div>
+<p>The e-mandate carries a specified validity period the customer can modify or withdraw. A debit outside that window is unauthorised.</p><dl>
+<dt>Evaluated by</dt><dd><a href="https://github.com/CODER7657/pramana/blob/main/pramana/kernel/verify/rbi.py#L295"><code>rbi.validity_window()</code></a></dd>
+<dt>Source</dt><dd>RBI, Digital Payments - E-mandate Framework, 2026, Specified validity period (effective 2026-04-21)</dd>
+</dl></article>
+</main></body></html>
